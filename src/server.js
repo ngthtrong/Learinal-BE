@@ -1,15 +1,15 @@
 const http = require('http');
 const app = require('./app');
-const { env, mongo } = require('./config');
+const { env, mongoose: mongooseCfg } = require('./config');
 
 const PORT = env.port || 3000;
 const server = http.createServer(app);
 
 async function start() {
   try {
-    await mongo.connectMongo(env.mongoUri, env.mongoDbName);
+    await mongooseCfg.connectMongoose(env.mongoUri, env.mongoDbName);
     // eslint-disable-next-line no-console
-    console.log(`Connected to MongoDB: ${env.mongoDbName}`);
+    console.log(`Connected to MongoDB (Mongoose): ${env.mongoDbName}`);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Failed to connect to MongoDB', err);
@@ -29,7 +29,7 @@ function shutdown(signal) {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
   server.close(async () => {
     // Close DB/queue connections here when added
-    await mongo.disconnectMongo().catch(() => {});
+    await mongooseCfg.disconnectMongoose().catch(() => {});
     process.exit(0);
   });
   // Force close after 10s
