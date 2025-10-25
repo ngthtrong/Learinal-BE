@@ -12,7 +12,12 @@ Bạn là LLM hỗ trợ triển khai backend Learinal theo kiến trúc Express
 
 - Runtime: Node.js LTS (>=18).
 - Framework: Express.
-- CSDL: MongoDB (ưu tiên official mongodb driver; có thể trừu tượng hóa qua repository).
+- CSDL: MongoDB (sử dụng Mongoose ODM 8.x).
+  - Bật timestamps (createdAt/updatedAt) ở tất cả schema chính.
+  - Sử dụng validators/enums trong Schema thay vì kiểm tra thủ công ở controller.
+  - Khai báo indexes/unique/partial index ngay trên Schema (đồng bộ với docs/mongodb-schema.md).
+  - Dùng versionKey `__v` cho optimistic concurrency; ánh xạ ETag từ `__v` hoặc `updatedAt`.
+  - Mặc định truy vấn đọc với `.lean()` tại repository (trừ khi cần middleware/hook trên document).
 - Auth: OAuth 2.0 (Google) + JWT bearer trên API.
 - LLM: Google Gemini API (qua adapter nội bộ).
 - Email: SendGrid/SES (adapter).
@@ -31,12 +36,21 @@ Bạn là LLM hỗ trợ triển khai backend Learinal theo kiến trúc Express
   - routes/: khai báo route theo resource, mount dưới /api/v1.
   - controllers/: nhận request, ủy quyền sang service, không chứa nghiệp vụ.
   - services/: nghiệp vụ ứng dụng, kiểm tra quyền/role, giao tiếp adapters/repos.
-  - repositories/: truy xuất MongoDB theo từng collection (users, subjects, documents, questionSets, quizAttempts, validationRequests, commissionRecords, subscriptionPlans, userSubscriptions, notifications).
+  - repositories/: truy xuất MongoDB (Mongoose Model) theo từng collection (users, subjects, documents, questionSets, quizAttempts, validationRequests, commissionRecords, subscriptionPlans, userSubscriptions, notifications).
   - adapters/: llmClient, emailClient, storageClient, eventBus, oauthClient.
   - middleware/: authz (JWT, roles), rateLimit, errorHandler, requestId, inputValidation, etag/if-none-match, idempotency-key.
   - jobs/: định nghĩa job types, handler (ingestion, summarization, question generation, email).
   - utils/: helpers (pagination, sorting, time, objectId).
   - types/: khai báo kiểu chung (DTOs).
+  - models/: định nghĩa Mongoose Schema/Model cho từng collection (đặt tên `*.model.js`).
+
+Quy ước Mongoose Models:
+
+- Mỗi Model có `Schema.set('timestamps', true)`; `versionKey` giữ nguyên `__v`.
+- Dùng `toJSON`/`toObject` transform để chuẩn hóa: `_id` → `id`, loại bỏ `__v` và các trường nội bộ/nhạy cảm.
+- Enum/constraints đặt tại Schema (ví dụ: role/status/difficultyLevel).
+- Định nghĩa indexes qua `Schema.index(...)`, bao gồm unique/partial index theo yêu cầu domain.
+- Không đặt nghiệp vụ trong hook; chỉ dùng pre/post hook nhẹ (ví dụ: sync derived fields). Nghiệp vụ ở Service.
   - tests/: unit/integration theo resource.
 
 Nguyên tắc:
@@ -86,7 +100,7 @@ Ví dụ envelope:
   - authorizeRole(...roles): kiểm tra role phù hợp.
   - ownership checks: với tài nguyên thuộc user (subjects, documents, questionSets…).
 
-### 6) Dữ liệu & ràng buộc MongoDB
+### 6) Dữ liệu & ràng buộc MongoDB (chuẩn hóa theo Mongoose)
 
 Collections chính (đồng bộ với docs/mongodb-schema.md):
 
@@ -101,13 +115,25 @@ Collections chính (đồng bộ với docs/mongodb-schema.md):
 - userSubscriptions: lịch sử đăng ký, entitlementsSnapshot
 - notifications: theo user, isRead, createdAt
 
-Index gợi ý: theo tài liệu (userId + createdAt, status + updatedAt, v.v.). Cập nhật updatedAt ở service/repo.
+Index gợi ý: khai báo trực tiếp tại Schema (userId + createdAt, status + updatedAt, v.v.). Timestamps do Mongoose quản lý; không tự cập nhật thủ công `updatedAt`.
+
+Chuẩn hóa Mongoose Schema:
+
+- Bật `timestamps: true` cho tất cả schema chính để có createdAt/updatedAt tự động.
+- Sử dụng `enum`, `min/max/maxlength`, `match` trong Schema để ràng buộc dữ liệu đầu vào.
+- Unique/Partial indexes:
+  - Email người dùng: `unique: true`, index lowercased nếu cần chuẩn hóa.
+  - validationRequests: dùng `schema.index({ setId: 1 }, { unique: true, partialFilterExpression: { status: { $in: ['PendingAssignment','Assigned'] } } })` để bảo đảm 1 yêu cầu mở cho 1 set.
+- Ánh xạ ETag/Optimistic Concurrency:
+  - ETag đề xuất: `W/"v<__v>"` hoặc hash `(updatedAt + id)`.
+  - Khi PATCH tài nguyên có ETag: thực hiện cập nhật có điều kiện theo `__v` (ví dụ `findOneAndUpdate({ _id, __v: expectedV }, { $set: ... }, { new: true, runValidators: true })`). Nếu không khớp → 412.
+- Trả về dữ liệu: dùng `Model.find(...).lean()` với projection để tối ưu; mapping `_id` → `id` ở repository.
 
 Validation nơi nào?
 
 - Input validation: middleware (celebrate/joi hoặc zod/yup) theo DTO.
-- Domain validation: service (bất biến nghiệp vụ).
-- DB validator: có thể áp dụng qua script init (db/init/init-mongodb.js).
+- Domain validation: service (bất biến nghiệp vụ; cross-document rules).
+- DB validator: đặt tại Mongoose Schema (validators), indexes; có thể bổ sung script init cho indexes nặng nếu cần.
 
 ### 7) Hạn mức upload file
 
@@ -205,7 +231,7 @@ Webhooks:
 
 - POST /webhooks/stripe → 200 (không yêu cầu JWT; xác minh chữ ký Stripe)
 
-### 11) Quy tắc triển khai theo lớp
+### 11) Quy tắc triển khai theo lớp (với Mongoose)
 
 - Controller:
   - Parse input, validate DTO.
@@ -217,8 +243,13 @@ Webhooks:
   - Giao tiếp repo/adapters, xử lý idempotency, ETag.
   - Tạo event publish cho jobs khi cần.
 - Repository:
-  - Truy vấn Mongo an toàn (project các trường trả về).
-  - Tôn trọng indexes gợi ý.
+  - Chỉ làm việc với Mongoose Model; không truy cập driver thấp hơn trực tiếp.
+  - Đọc dữ liệu dùng `.lean()` và projection cụ thể; không trả thừa dữ liệu.
+  - Cập nhật dùng `findOneAndUpdate`/`updateOne` với `{ runValidators: true, new: true, setDefaultsOnInsert: true }`.
+  - Chỉ `$set` các trường cho phép; chặn `ownerId`, `userId`… khỏi payload update của client.
+  - Với ETag: thêm điều kiện `__v` vào filter; mismatch → bắn 412 từ service.
+  - Map DTO: `_id` → `id`, bỏ `__v`, chuẩn hóa ngày ISO string.
+  - Indexes khai báo trong Schema; đảm bảo gọi `Model.init()` tại bootstrap để tạo index (nếu cần).
 - Adapter:
   - Bọc API ngoài, timeouts, retry/backoff, circuit breaker nhẹ nếu cần.
 
@@ -227,6 +258,13 @@ Webhooks:
 - 200/201/202/204 theo từng endpoint.
 - 400 ValidationError (input), 401 Unauthorized, 403 Forbidden, 404 NotFound, 409 Conflict (idempotency/unique), 412 Precondition Failed (ETag), 429 TooManyRequests, 5xx (server/provider failures).
 - Luôn theo shape lỗi chuẩn: code/message/details.
+
+Mapping lỗi Mongoose → envelope chuẩn:
+
+- `MongooseError.ValidationError` hoặc `CastError` → 400 `ValidationError` (details: field → message).
+- `MongoServerError` mã `E11000` (duplicate key) → 409 `Conflict` (details: index, keyValue).
+- Mismatch `__v` khi cập nhật có điều kiện → 412 `PreconditionFailed`.
+- Các lỗi khác của driver/connection → 503 nếu upstream DB, hoặc 500 nếu lỗi trong ứng dụng.
 
 ### 13) Logging & vận hành
 
@@ -254,6 +292,8 @@ Webhooks:
 - Validation: DTO + nghiệp vụ + ETag/Idempotency.
 - Lỗi theo shape chuẩn, mã trạng thái đúng.
 - Test: tối thiểu unit cho service/repo và 1–2 integration happy path cho mỗi resouce chính (Users/Subjects/Documents/QuestionSets/QuizAttempts).
+- Mongoose Models: Schema có validators/enums/indexes đúng; `toJSON` transform chuẩn hóa `_id` → `id`, loại `__v`.
+- Repository test chạy với `mongodb-memory-server` (khuyến nghị) hoặc MongoDB test container, bao phủ happy path + 1-2 edge cases (duplicate key, cast error).
 - Tài liệu: cập nhật README/inline JSDoc nơi cần thiết (nếu có).
 - Không rò rỉ secrets; biến env qua config.
 
@@ -266,11 +306,12 @@ Webhooks:
   ],
   "meta": { "page": 1, "pageSize": 20, "totalItems": 1, "totalPages": 1 }
   }
-- PATCH /users/me với If-None-Match
+- PATCH /users/me với If-None-Match (ETag dựa trên __v)
 
-  - Request headers: If-None-Match: "W/\"v123\""
-  - 200 với ETag mới trong response headers
-  - 412 nếu ETag mismatch
+  - Request headers: If-None-Match: "W/\"v3\"" (3 là giá trị hiện tại của __v phía client biết)
+  - Server update: `findOneAndUpdate({ _id: userId, __v: 3 }, { $set: payload }, { new: true, runValidators: true })`
+  - 200 với ETag mới trong response headers: `ETag: W/"v4"`
+  - 412 nếu không tìm thấy document theo filter (do __v đã thay đổi)
 - POST /question-sets/generate
 
   - Headers: Idempotency-Key: "uuid"
