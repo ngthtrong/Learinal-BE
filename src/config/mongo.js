@@ -1,17 +1,25 @@
-// Placeholder Mongo driver setup (official mongodb driver recommended)
-// This file exposes connect/disconnect helpers and a getter for the DB reference.
+// Mongo driver setup using official mongodb driver
+// Exposes connect/disconnect helpers and a getter for the DB reference.
 
 let client = null;
 let db = null;
 
 async function connectMongo(uri, dbName) {
-  // Lazy import to avoid hard dependency during scaffold
-  // const { MongoClient } = require('mongodb');
-  // client = new MongoClient(uri, { maxPoolSize: 10 });
-  // await client.connect();
-  // db = client.db(dbName);
-  // return db;
-  return null; // Will be implemented later
+  if (db) return db;
+  const { MongoClient, ServerApiVersion } = require('mongodb');
+  client = new MongoClient(uri, {
+    maxPoolSize: 10,
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  });
+  await client.connect();
+  db = client.db(dbName);
+  // quick ping
+  await db.command({ ping: 1 });
+  return db;
 }
 
 function getDb() {
