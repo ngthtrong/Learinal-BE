@@ -98,20 +98,62 @@ const normalizeDetails = (details) => {
   return details;
 };
 
+const CODE_TO_STATUS = {
+  Unauthorized: 401,
+  Forbidden: 403,
+  NotFound: 404,
+  Conflict: 409,
+  ValidationError: 400,
+  InvalidJSON: 400,
+  PreconditionFailed: 412,
+  TooManyRequests: 429,
+  DatabaseError: 503,
+  InternalServerError: 500,
+};
+
+const DEFAULT_MESSAGE_BY_CODE = {
+  Unauthorized: "Authentication required",
+  Forbidden: "Insufficient role",
+  NotFound: "Resource not found",
+  Conflict: "Conflict",
+  ValidationError: "Validation failed",
+  InvalidJSON: "Malformed JSON payload",
+  PreconditionFailed: "Precondition failed",
+  TooManyRequests: "Too many requests",
+  DatabaseError: "Database operation failed",
+  InternalServerError: "Internal server error",
+};
+
 const buildFallback = (error) => {
-  const parsedStatus = Number(error.status);
-  const status =
-    Number.isInteger(parsedStatus) && parsedStatus > 0 ? parsedStatus : 500;
-  const code =
-    error.code ||
-    (status >= 500
-      ? "InternalServerError"
-      : status === 404
-      ? "NotFound"
-      : "BadRequest");
-  const message =
-    error.message ||
+  // Prefer provided code/status but normalize according to OpenAPI overview
+  let code = error.code;
+  let status = Number(error.status);
+
+  if (!code) {
+    // derive code from status if possible
+    if (Number.isInteger(status)) {
+      if (status === 401) code = "Unauthorized";
+      else if (status === 403) code = "Forbidden";
+      else if (status === 404) code = "NotFound";
+      else if (status === 409) code = "Conflict";
+      else if (status === 412) code = "PreconditionFailed";
+      else if (status === 429) code = "TooManyRequests";
+      else if (status >= 500) code = "InternalServerError";
+      else code = "BadRequest";
+    } else {
+      code = "InternalServerError";
+    }
+  }
+
+  // If status is missing/invalid, infer from code mapping
+  if (!Number.isInteger(status) || status <= 0) {
+    status = CODE_TO_STATUS[code] || (code === "BadRequest" ? 400 : 500);
+  }
+
+  const fallbackMsg =
+    DEFAULT_MESSAGE_BY_CODE[code] ||
     (status >= 500 ? "Internal server error" : "Request failed");
+  const message = error.message || fallbackMsg;
 
   return {
     status,

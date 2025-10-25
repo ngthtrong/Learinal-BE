@@ -45,6 +45,20 @@ class UsersRepository extends BaseRepository {
     super(User);
   }
 
+  async updateByIdWithVersion(id, update, expectedVersion, options = {}) {
+    const filter = { _id: id };
+    if (Number.isInteger(expectedVersion)) {
+      filter.__v = expectedVersion;
+    }
+    return this.model
+      .findOneAndUpdate(filter, update, {
+        new: true,
+        runValidators: true,
+        ...options,
+      })
+      .lean();
+  }
+
   async findByUserId(userId, options = {}) {
     const { projection = null, includeSensitive = false } = options;
     const doc = await this.model.findById(userId, projection).lean();
