@@ -3,7 +3,6 @@
 Cập nhật: 2025-10-25 • Phạm vi: API cho MVP v0.1 theo SRS/SDD
 
 Tham chiếu:
-
 - SRS: `docs/SRS for Learinal.md`
 - SDD: `docs/SDD_Learinal.md`
 - OpenAPI: `docs/api/learinal-openapi.yaml` (tóm tắt: `docs/api/learinal-openapi-overview.md`)
@@ -23,7 +22,6 @@ Tham chiếu:
 Mục tiêu: Mỗi track (BE1/BE2/BE3) có thể phát triển và kiểm thử độc lập mà không chờ module khác, nhờ cơ chế mock/stub và feature flags. Lịch tích hợp end-to-end được tách ở cuối mục.
 
 Chế độ chung cho “không phụ thuộc” (áp dụng cho mọi track):
-
 - Cho phép bật STUB/REAL qua biến môi trường: `AUTH_MODE=stub|real`, `LLM_MODE=stub|real`, `QUEUE_MODE=stub|real`, `STORAGE_MODE=local|s3`, `PAYMENT_MODE=stub|real`.
 - Chuẩn test dev: chấp nhận header `X-Dev-User-Id` và `X-Dev-User-Role` khi `AUTH_MODE=stub` để giả lập danh tính/role.
 - Cung cấp fixtures và in-memory repo để chạy tích hợp tối thiểu không cần Mongo (tùy chọn); khi `DB_MODE=memory|mongo`.
@@ -32,7 +30,6 @@ Chế độ chung cho “không phụ thuộc” (áp dụng cho mọi track):
 Song song theo track:
 
 1. BE1 – Health + Auth + Users + Nền tảng (ĐỘC LẬP)
-
    - Endpoints triển khai ngay ở `AUTH_MODE=stub` (không chờ Google OIDC), sau đó chuyển `real`:
      - GET `/health`
      - POST `/auth/exchange` (stub: trả JWT giả hợp lệ), POST `/auth/refresh`
@@ -43,8 +40,8 @@ Song song theo track:
      - Error handler chuẩn hóa `{code,message,details}`
      - Rate-limit headers, pagination helpers
      - Idempotency-Key và ETag infra
-2. BE2 – Subjects + Documents + Ingestion/Summary (ĐỘC LẬP)
 
+2. BE2 – Subjects + Documents + Ingestion/Summary (ĐỘC LẬP)
    - Khi `AUTH_MODE=stub`, nhận `X-Dev-User-Id/Role` để xác định ownership, không cần BE1 hoàn tất.
    - Endpoints:
      - GET/POST `/subjects`, GET/PATCH/DELETE `/subjects/{id}`
@@ -54,8 +51,8 @@ Song song theo track:
      - LLMAdapter: `LLM_MODE=stub` trả về summary giả, chuyển `real` sau.
      - Queue: `QUEUE_MODE=stub` (run in-process) trước khi dùng Redis/RabbitMQ.
    - Worker: extract text + summarize (retry/backoff) hoạt động nội bộ trong stub mode.
-3. BE3 – QuestionSets + QuizAttempts + Validation + Notifications (ĐỘC LẬP)
 
+3. BE3 – QuestionSets + QuizAttempts + Validation + Notifications (ĐỘC LẬP)
    - Chạy với `AUTH_MODE=stub` và data fixtures nếu BE2 chưa có:
      - Cho phép tạo QuestionSet từ payload custom khi `LLM_MODE=stub` (không phụ thuộc Documents thực tế).
    - Endpoints:
@@ -69,7 +66,6 @@ Song song theo track:
      - Validation workflow có thể chạy với in-memory repo trước khi nối Mongo và MQ thực
 
 Lịch tích hợp end-to-end (không ảnh hưởng phát triển song song):
-
 - Bước 1: Bật `AUTH_MODE=real` (Google OIDC) ở BE1, còn lại giữ stub → kiểm thử Auth/Users.
 - Bước 2: BE2 chuyển `DB_MODE=mongo`, `STORAGE_MODE=s3` (hoặc giữ local), `LLM_MODE=real` riêng lẻ → kiểm thử Documents/summary.
 - Bước 3: BE3 nối với dữ liệu thực của BE2 (QuestionSets generate dùng document thực), `QUEUE_MODE=real` → chạy full flow.
@@ -83,31 +79,28 @@ Lịch tích hợp end-to-end (không ảnh hưởng phát triển song song):
 Mỗi người own theo domain + service, chịu trách nhiệm controller/service/repo/tests/docs.
 
 ### BE1 – Auth & Users & Nền tảng (RBAC/ETag/Errors)
-
 - Endpoints: `/health`, `/auth/*`, `/users/me`, `/admin/users`
 - Infra: JWT verify (stub/real), role guard (stub/real), error formatter, rate-limit headers, pagination helpers, ETag/If-None-Match, Idempotency-Key
 - Data: `users` (unique email, indexes theo SRS/DB schema)
 - Acceptance (không phụ thuộc):
-  - Chạy được hoàn toàn với `AUTH_MODE=stub` (JWT giả lập hợp lệ) và chuyển sang `real` không đổi hợp đồng API
-  - Đổi code → token (stub/real), refresh token OK; 401/403 theo Error schema
-  - GET/PATCH `/users/me` có ETag; PATCH trả 412 khi ETag mismatch
-  - RBAC theo role (stub dựa `X-Dev-User-Role`); rate-limit headers; logs có request-id
-  - Tests ≥ 90% controller/service; contract khớp OpenAPI
+   - Chạy được hoàn toàn với `AUTH_MODE=stub` (JWT giả lập hợp lệ) và chuyển sang `real` không đổi hợp đồng API
+   - Đổi code → token (stub/real), refresh token OK; 401/403 theo Error schema
+   - GET/PATCH `/users/me` có ETag; PATCH trả 412 khi ETag mismatch
+   - RBAC theo role (stub dựa `X-Dev-User-Role`); rate-limit headers; logs có request-id
+   - Tests ≥ 90% controller/service; contract khớp OpenAPI
 
 ### BE2 – Subjects & Documents & Ingestion/LLM Worker
-
 - Endpoints: `/subjects*`, `/documents*`, `/documents/{id}/summary`
 - Adapters: StorageAdapter (local/S3), LLMAdapter (Gemini), Queue (Redis→RabbitMQ TBC) – tất cả đều có chế độ stub
 - Jobs: extract text + summarize async với retry/backoff; DLQ khi lỗi không phục hồi
 - Acceptance (không phụ thuộc):
-  - Hoạt động full với `AUTH_MODE=stub` (dựa `X-Dev-User-Id`), `DB_MODE=memory|mongo`, `STORAGE_MODE=local`, `LLM_MODE=stub`
-  - Upload `.pdf/.docx/.txt` ≤20MB: 415 nếu sai loại, 413 nếu quá dung lượng
-  - Tài liệu chuyển trạng thái; summary hiển thị khi job Completed; GET summary hợp lệ
-  - Retry/backoff cho LLM (stub/real), metrics cơ bản; indexes Mongo theo `mongodb-schema.md`
-  - Tests ≥ 85% (+ integration cho worker happy/error/timeout)
+   - Hoạt động full với `AUTH_MODE=stub` (dựa `X-Dev-User-Id`), `DB_MODE=memory|mongo`, `STORAGE_MODE=local`, `LLM_MODE=stub`
+   - Upload `.pdf/.docx/.txt` ≤20MB: 415 nếu sai loại, 413 nếu quá dung lượng
+   - Tài liệu chuyển trạng thái; summary hiển thị khi job Completed; GET summary hợp lệ
+   - Retry/backoff cho LLM (stub/real), metrics cơ bản; indexes Mongo theo `mongodb-schema.md`
+   - Tests ≥ 85% (+ integration cho worker happy/error/timeout)
 
 ### BE3 – QuestionSets, QuizAttempts, Validation, Notifications
-
 - Endpoints: `/question-sets*`, `/quiz-attempts*`, `/question-sets/{id}/review`, `/validation-requests*`, `/notifications*`
 - Domain:
   - Generate đề: enforce `difficultyLevel ∈ {Biết, Hiểu, Vận dụng, Vận dụng cao}`, `numQuestions ∈ [1..100]`, `Idempotency-Key`
@@ -115,25 +108,23 @@ Mỗi người own theo domain + service, chịu trách nhiệm controller/servi
   - Validation: tạo `ValidationRequest` (Queued), list/patch theo vai trò Expert/Admin
   - Share link: tạo/rotate, unique index
 - Acceptance (không phụ thuộc):
-  - Chạy full với `AUTH_MODE=stub`, `LLM_MODE=stub`, `DB_MODE=memory|mongo` mà không cần Documents thật
-  - POST `/question-sets/generate` trả 201 (sync stub) hoặc 202 (async) theo config; schema chuẩn; hỗ trợ Idempotency-Key
-  - Submit quiz: chấm điểm đúng; test biên: 0 đúng, tất cả đúng, độ khó pha trộn
-  - Validation: chuyển trạng thái, timestamps; Notifications: tạo tối thiểu theo sự kiện nội bộ (stub)
-  - Tests ≥ 85% (+ property-based test cho scoring – tùy chọn)
+   - Chạy full với `AUTH_MODE=stub`, `LLM_MODE=stub`, `DB_MODE=memory|mongo` mà không cần Documents thật
+   - POST `/question-sets/generate` trả 201 (sync stub) hoặc 202 (async) theo config; schema chuẩn; hỗ trợ Idempotency-Key
+   - Submit quiz: chấm điểm đúng; test biên: 0 đúng, tất cả đúng, độ khó pha trộn
+   - Validation: chuyển trạng thái, timestamps; Notifications: tạo tối thiểu theo sự kiện nội bộ (stub)
+   - Tests ≥ 85% (+ property-based test cho scoring – tùy chọn)
 
 ---
 
 ## 4) Lộ trình 2 sprint (khuyến nghị)
 
 ### Sprint 1 (2 tuần): Phát triển song song ở chế độ stub (không phụ thuộc)
-
 - BE1: `/health`, `/auth/*` (stub), `/users/me`, RBAC (stub), errors, pagination helpers, ETag/Idempotency infra
 - BE2: `/subjects*`, `/documents` upload/GET, worker (extract) chạy `QUEUE_MODE=stub`, trạng thái Uploading→Processing→Completed/Error
 - BE3: `/question-sets` (GET), `/question-sets/generate` (201 sync stub, 202 async stub), `/question-sets/{id}` GET/PATCH, `/question-sets/{id}/share`
 - Mốc demo nội bộ: Từng track demo độc lập bằng stub auth/llm/queue/storage
 
 ### Sprint 2 (2 tuần): Tích hợp dần REAL, mở rộng tính năng
-
 - BE3: `/quiz-attempts` start/submit/score, `/question-sets/{id}/review`, `/validation-requests*`
 - BE2: `/documents/{id}/summary` hoàn thiện + resilience (retry/backoff, DLQ), tối ưu indexes, có thể bật `LLM_MODE=real`
 - BE1: `/admin/users`, harden rate-limit headers, logs/observability (request-id, user-id), có thể bật `AUTH_MODE=real`
@@ -147,21 +138,17 @@ Mỗi người own theo domain + service, chịu trách nhiệm controller/servi
 ## 2b) Danh sách toàn bộ endpoints (đối chiếu OpenAPI)
 
 Health
-
 - [ ] GET `/health`
 
 Auth
-
 - [ ] POST `/auth/exchange`
 - [ ] POST `/auth/refresh`
 
 Users
-
 - [ ] GET `/users/me`
 - [ ] PATCH `/users/me`
 
 Subjects
-
 - [ ] GET `/subjects`
 - [ ] POST `/subjects`
 - [ ] GET `/subjects/{id}`
@@ -169,13 +156,11 @@ Subjects
 - [ ] DELETE `/subjects/{id}`
 
 Documents
-
 - [ ] POST `/documents`
 - [ ] GET `/documents/{id}`
 - [ ] GET `/documents/{id}/summary`
 
 QuestionSets
-
 - [ ] GET `/question-sets`
 - [ ] POST `/question-sets/generate`
 - [ ] GET `/question-sets/{id}`
@@ -183,35 +168,29 @@ QuestionSets
 - [ ] POST `/question-sets/{id}/share`
 
 QuizAttempts
-
 - [ ] POST `/quiz-attempts`
 - [ ] GET `/quiz-attempts/{id}`
 - [ ] POST `/quiz-attempts/{id}/submit`
 
 Validation
-
 - [ ] POST `/question-sets/{id}/review`
 - [ ] GET `/validation-requests`
 - [ ] GET `/validation-requests/{id}`
 - [ ] PATCH `/validation-requests/{id}`
 
 Notifications
-
 - [ ] GET `/notifications`
 - [ ] PATCH `/notifications/{id}`
 
 Subscriptions
-
 - [ ] GET `/subscription-plans`
 - [ ] GET `/user-subscriptions/me`
 - [ ] POST `/subscriptions`
 
 Admin
-
 - [ ] GET `/admin/users`
 
 Webhooks
-
 - [ ] POST `/webhooks/stripe`
 
 Ghi chú: Danh sách trên phản ánh toàn bộ bề mặt API trong `docs/api/learinal-openapi.yaml`. Không bổ sung endpoint mới ngoài phạm vi OpenAPI.
