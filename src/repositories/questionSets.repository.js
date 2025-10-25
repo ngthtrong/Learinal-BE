@@ -1,8 +1,8 @@
-class QuestionSetsRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('questionSets') : null;
-  }
+const BaseRepository = require('./base.repository');
+const { QuestionSet } = require('../models');
+
+class QuestionSetsRepository extends BaseRepository {
+  constructor() { super(QuestionSet); }
 }
 
 module.exports = QuestionSetsRepository;

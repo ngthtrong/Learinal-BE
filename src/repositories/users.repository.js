@@ -1,11 +1,8 @@
-class UsersRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('users') : null;
-  }
-  async findById(/* id */) { throw new Error('NotImplemented'); }
-  async create(/* dto */) { throw new Error('NotImplemented'); }
-  async update(/* id, dto */) { throw new Error('NotImplemented'); }
+const BaseRepository = require('./base.repository');
+const { User } = require('../models');
+
+class UsersRepository extends BaseRepository {
+  constructor() { super(User); }
 }
 
 module.exports = UsersRepository;

@@ -1,9 +1,8 @@
-class SubjectsRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('subjects') : null;
-  }
-  async findById(/* id */) { throw new Error('NotImplemented'); }
+const BaseRepository = require('./base.repository');
+const { Subject } = require('../models');
+
+class SubjectsRepository extends BaseRepository {
+  constructor() { super(Subject); }
 }
 
 module.exports = SubjectsRepository;

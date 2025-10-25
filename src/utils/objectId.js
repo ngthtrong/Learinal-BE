@@ -1,6 +1,9 @@
+const { Types } = require('mongoose');
+
 function toObjectId(id) {
-  // TODO: Use mongodb.ObjectId when wired
-  return id;
+  if (id instanceof Types.ObjectId) return id;
+  if (Types.ObjectId.isValid(id)) return new Types.ObjectId(id);
+  return id; // fall back unchanged
 }
 
 module.exports = { toObjectId };

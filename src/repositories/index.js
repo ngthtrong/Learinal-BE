@@ -1,12 +1,39 @@
+const UsersRepository = require('./users.repository');
+const SubjectsRepository = require('./subjects.repository');
+const DocumentsRepository = require('./documents.repository');
+const QuestionSetsRepository = require('./questionSets.repository');
+const QuizAttemptsRepository = require('./quizAttempts.repository');
+const ValidationRequestsRepository = require('./validationRequests.repository');
+const CommissionRecordsRepository = require('./commissionRecords.repository');
+const SubscriptionPlansRepository = require('./subscriptionPlans.repository');
+const UserSubscriptionsRepository = require('./userSubscriptions.repository');
+const NotificationsRepository = require('./notifications.repository');
+
+function createRepositories() {
+  return {
+    usersRepository: new UsersRepository(),
+    subjectsRepository: new SubjectsRepository(),
+    documentsRepository: new DocumentsRepository(),
+    questionSetsRepository: new QuestionSetsRepository(),
+    quizAttemptsRepository: new QuizAttemptsRepository(),
+    validationRequestsRepository: new ValidationRequestsRepository(),
+    commissionRecordsRepository: new CommissionRecordsRepository(),
+    subscriptionPlansRepository: new SubscriptionPlansRepository(),
+    userSubscriptionsRepository: new UserSubscriptionsRepository(),
+    notificationsRepository: new NotificationsRepository(),
+  };
+}
+
 module.exports = {
-  UsersRepository: require('./users.repository'),
-  SubjectsRepository: require('./subjects.repository'),
-  DocumentsRepository: require('./documents.repository'),
-  QuestionSetsRepository: require('./questionSets.repository'),
-  QuizAttemptsRepository: require('./quizAttempts.repository'),
-  ValidationRequestsRepository: require('./validationRequests.repository'),
-  CommissionRecordsRepository: require('./commissionRecords.repository'),
-  SubscriptionPlansRepository: require('./subscriptionPlans.repository'),
-  UserSubscriptionsRepository: require('./userSubscriptions.repository'),
-  NotificationsRepository: require('./notifications.repository'),
+  UsersRepository,
+  SubjectsRepository,
+  DocumentsRepository,
+  QuestionSetsRepository,
+  QuizAttemptsRepository,
+  ValidationRequestsRepository,
+  CommissionRecordsRepository,
+  SubscriptionPlansRepository,
+  UserSubscriptionsRepository,
+  NotificationsRepository,
+  createRepositories,
 };

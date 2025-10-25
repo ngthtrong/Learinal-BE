@@ -1,8 +1,8 @@
-class SubscriptionPlansRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('subscriptionPlans') : null;
-  }
+const BaseRepository = require('./base.repository');
+const { SubscriptionPlan } = require('../models');
+
+class SubscriptionPlansRepository extends BaseRepository {
+  constructor() { super(SubscriptionPlan); }
 }
 
 module.exports = SubscriptionPlansRepository;

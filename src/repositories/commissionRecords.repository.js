@@ -1,8 +1,8 @@
-class CommissionRecordsRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('commissionRecords') : null;
-  }
+const BaseRepository = require('./base.repository');
+const { CommissionRecord } = require('../models');
+
+class CommissionRecordsRepository extends BaseRepository {
+  constructor() { super(CommissionRecord); }
 }
 
 module.exports = CommissionRecordsRepository;

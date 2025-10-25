@@ -1,8 +1,8 @@
-class ValidationRequestsRepository {
-  constructor(db) {
-    this.db = db;
-    this.collection = db ? db.collection('validationRequests') : null;
-  }
+const BaseRepository = require('./base.repository');
+const { ValidationRequest } = require('../models');
+
+class ValidationRequestsRepository extends BaseRepository {
+  constructor() { super(ValidationRequest); }
 }
 
 module.exports = ValidationRequestsRepository;
