@@ -1,0 +1,788 @@
+openapi: 3.1.0
+info:
+  title: Learinal API
+  version: 0.1.0
+  description: |
+    REST API for Learinal MVP. Covers authentication, subjects, documents, question sets,
+    quiz attempts, validation workflow, notifications, and subscriptions.
+    Security: OAuth 2.0 (Google) with JWT bearer on API; some admin endpoints require role=Admin.
+  contact:
+    name: Learinal Dev Team
+servers:
+  - url: https://api.learinal.example.com/api/v1
+    description: Production (TBC)
+  - url: https://staging.api.learinal.example.com/api/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Subjects
+  - name: Documents
+  - name: QuestionSets
+  - name: QuizAttempts
+  - name: Validation
+  - name: Notifications
+  - name: Subscriptions
+  - name: Admin
+  - name: Webhooks
+  - name: Health
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    sort:
+      name: sort
+      in: query
+      schema: { type: string, example: "-createdAt" }
+    ifNoneMatch:
+      name: If-None-Match
+      in: header
+      schema: { type: string }
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+      description: Idempotency key to safely retry POST/PUT operations.
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+    User:
+      type: object
+      properties:
+        id: { type: string, description: ObjectId }
+        fullName: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [Learner, Expert, Admin] }
+        status: { type: string, enum: [PendingActivation, Active, Deactivated] }
+        subscriptionPlanId: { type: string, nullable: true }
+        subscriptionStatus: { type: string, enum: [None, Active, Expired, Cancelled] }
+        subscriptionRenewalDate: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Subject:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        subjectName: { type: string }
+        description: { type: string, nullable: true }
+        tableOfContents: { type: array, items: { type: object } }
+        summary: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Document:
+      type: object
+      properties:
+        id: { type: string }
+        subjectId: { type: string }
+        ownerId: { type: string }
+        originalFileName: { type: string }
+        fileType: { type: string, enum: [".pdf", ".docx", ".txt"] }
+        fileSize: { type: number }
+        storagePath: { type: string }
+        extractedText: { type: string, nullable: true }
+        summaryShort: { type: string, nullable: true }
+        summaryFull: { type: string, nullable: true }
+        summaryUpdatedAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [Uploading, Processing, Completed, Error] }
+        uploadedAt: { type: string, format: date-time }
+    Question:
+      type: object
+      properties:
+        questionId: { type: string }
+        questionText: { type: string }
+        options: { type: array, items: { type: string } }
+        correctAnswerIndex: { type: integer }
+        explanation: { type: string, nullable: true }
+        topicTags: { type: array, items: { type: string } }
+        difficultyLevel: { type: string, enum: ["Biết","Hiểu","Vận dụng","Vận dụng cao"] }
+    QuestionSet:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        subjectId: { type: string }
+        creatorId: { type: string }
+        questions: { type: array, items: { $ref: "#/components/schemas/Question" } }
+        timeLimit: { type: integer, nullable: true }
+        status: { type: string, enum: [Draft, Public, PendingReview, Validated, Rejected, Published] }
+        shareLink: { type: string, nullable: true }
+        isShared: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    QuizAttempt:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        setId: { type: string }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        score: { type: number }
+        totalQuestions: { type: integer }
+        correctAnswers: { type: integer }
+        userAnswers:
+          type: array
+          items:
+            type: object
+            properties:
+              questionId: { type: string }
+              selectedOptionIndex: { type: integer }
+              isCorrect: { type: boolean }
+    ValidationRequest:
+      type: object
+      properties:
+        id: { type: string }
+        setId: { type: string }
+        requesterId: { type: string }
+        assignedAdminId: { type: string, nullable: true }
+        assignedExpertId: { type: string, nullable: true }
+        status: { type: string, enum: [Queued, InProgress, Completed, Rejected] }
+        rejectionReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        title: { type: string }
+        message: { type: string }
+        type: { type: string, enum: [info, success, warning, error] }
+        isRead: { type: boolean }
+        relatedEntityType: { type: string, nullable: true }
+        relatedEntityId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    SubscriptionPlan:
+      type: object
+      properties:
+        id: { type: string }
+        planName: { type: string }
+        description: { type: string, nullable: true }
+        billingCycle: { type: string, enum: [Monthly, Yearly] }
+        price: { type: number }
+        entitlements: { type: object }
+        status: { type: string, enum: [Active, Archived] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    UserSubscription:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        planId: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time, nullable: true }
+        renewalDate: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [Active, Expired, Cancelled, PendingPayment] }
+        entitlementsSnapshot: { type: object }
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness/Readiness probe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: OK }
+                  version: { type: string }
+
+  /auth/exchange:
+    post:
+      tags: [Auth]
+      summary: Exchange OAuth authorization code for JWT tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                redirectUri: { type: string }
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current user
+      responses:
+        '200':
+          description: Current user
+          headers:
+            ETag: { description: Version tag, schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Users]
+      summary: Update current user profile
+      parameters:
+        - $ref: '#/components/parameters/ifNoneMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '412': { description: Precondition Failed (ETag mismatch) }
+
+  /subjects:
+    get:
+      tags: [Subjects]
+      summary: List subjects of current user
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Subject' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Subjects]
+      summary: Create subject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectName]
+              properties:
+                subjectName: { type: string }
+                description: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Subject' } } } }
+
+  /subjects/{id}:
+    get:
+      tags: [Subjects]
+      summary: Get subject by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Subject, content: { application/json: { schema: { $ref: '#/components/schemas/Subject' } } } }
+    patch:
+      tags: [Subjects]
+      summary: Update subject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subjectName: { type: string }
+                description: { type: string }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Subject' } } } }
+    delete:
+      tags: [Subjects]
+      summary: Delete subject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+
+  /documents:
+    post:
+      tags: [Documents]
+      summary: Upload a document
+      description: Max size 20MB. Only .pdf, .docx, .txt.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, subjectId]
+              properties:
+                file: { type: string, format: binary }
+                subjectId: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Document' } } } }
+  /documents/{id}:
+    get:
+      tags: [Documents]
+      summary: Get a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Document, content: { application/json: { schema: { $ref: '#/components/schemas/Document' } } } }
+  /documents/{id}/summary:
+    get:
+      tags: [Documents]
+      summary: Get document summaries (short/full)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summaryShort: { type: string }
+                  summaryFull: { type: string }
+
+  /question-sets:
+    get:
+      tags: [QuestionSets]
+      summary: List question sets of current user
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/QuestionSet' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /question-sets/generate:
+    post:
+      tags: [QuestionSets]
+      summary: Generate question set via LLM
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentId, numQuestions]
+              properties:
+                documentId: { type: string }
+                topics: { type: array, items: { type: string } }
+                difficulty: { type: string, enum: ["Biết","Hiểu","Vận dụng","Vận dụng cao"] }
+                numQuestions: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionSet' } } } }
+        '202': { description: Accepted (async processing may continue) }
+  /question-sets/{id}:
+    get:
+      tags: [QuestionSets]
+      summary: Get question set by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: QuestionSet, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionSet' } } } }
+    patch:
+      tags: [QuestionSets]
+      summary: Update a question set (metadata/questions)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                questions: { type: array, items: { $ref: '#/components/schemas/Question' } }
+                status: { type: string }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionSet' } } } }
+  /question-sets/{id}/review:
+    post:
+      tags: [Validation]
+      summary: Request expert validation for a question set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '202': { description: Validation request queued, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationRequest' } } } }
+  /question-sets/{id}/share:
+    post:
+      tags: [QuestionSets]
+      summary: Create or rotate a public share link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Share info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shareLink: { type: string }
+
+  /quiz-attempts:
+    post:
+      tags: [QuizAttempts]
+      summary: Start a quiz attempt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [setId]
+              properties:
+                setId: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/QuizAttempt' } } } }
+  /quiz-attempts/{id}:
+    get:
+      tags: [QuizAttempts]
+      summary: Get attempt info
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Attempt, content: { application/json: { schema: { $ref: '#/components/schemas/QuizAttempt' } } } }
+  /quiz-attempts/{id}/submit:
+    post:
+      tags: [QuizAttempts]
+      summary: Submit answers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      questionId: { type: string }
+                      selectedOptionIndex: { type: integer }
+      responses:
+        '200': { description: Scored attempt, content: { application/json: { schema: { $ref: '#/components/schemas/QuizAttempt' } } } }
+
+  /validation-requests:
+    get:
+      tags: [Validation]
+      summary: List validation requests (admin/expert)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ValidationRequest' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /validation-requests/{id}:
+    get:
+      tags: [Validation]
+      summary: Get validation request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Item, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationRequest' } } } }
+    patch:
+      tags: [Validation]
+      summary: Update status (expert/admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [InProgress, Completed, Rejected] }
+                rejectionReason: { type: string }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationRequest' } } } }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications for current user
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /notifications/{id}:
+    patch:
+      tags: [Notifications]
+      summary: Mark as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isRead: { type: boolean }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+
+  /subscription-plans:
+    get:
+      tags: [Subscriptions]
+      summary: Public list of subscription plans
+      responses:
+        '200':
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SubscriptionPlan' }
+
+  /user-subscriptions/me:
+    get:
+      tags: [Subscriptions]
+      summary: Get current user subscription history
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UserSubscription' }
+
+  /subscriptions:
+    post:
+      tags: [Subscriptions]
+      summary: Start/checkout a subscription for current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId]
+              properties:
+                planId: { type: string }
+      responses:
+        '201':
+          description: Created (may include payment session)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: PendingPayment }
+                  checkoutUrl: { type: string }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Admin list users
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: role
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/User' } }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      summary: Stripe webhook endpoint (unauthenticated, verified by signature)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Received }
+
+x-conventions:
+  pagination: Query params page/pageSize; response { items[], meta }.
+  rateLimits:
+    default: 60 rpm per IP
+    headers: [X-RateLimit-Limit, X-RateLimit-Remaining, Retry-After]
+  idempotency: Use Idempotency-Key header on POSTs that create or charge.
+  errors:
+    shape: [code, message, details]
+    notes: "Use 4xx for client errors, 5xx for server/LLM provider failures."
+  security:
+    roles:
+      Learner: basic content features
+      Expert: can process validation assignments
+      Admin: full access to admin endpoints
+  fileUpload:
+    maxSizeMB: 20
+    types: ['.pdf','.docx','.txt']
+  services:
+    LLM: Google Gemini API
+    Email: SendGrid/SES
+    Storage: S3/Cloudinary
+    OAuth: Google OIDC
+    Payment: Stripe (TBC)
