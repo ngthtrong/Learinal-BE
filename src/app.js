@@ -5,7 +5,6 @@ const healthRoutes = require("./routes/health.routes");
 const requestId = require("./middleware/requestId");
 const errorFormatter = require("./middleware/errorFormatter");
 const errorHandler = require("./middleware/errorHandler");
-require("dotenv").config();
 
 const app = express();
 

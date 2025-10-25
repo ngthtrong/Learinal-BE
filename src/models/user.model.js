@@ -108,7 +108,6 @@ UserSchema.set("toObject", {
   transform: transformUser,
 });
 
-UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ role: 1, status: 1, email: 1 });
 UserSchema.index({ subscriptionPlanId: 1, subscriptionStatus: 1 });
 
