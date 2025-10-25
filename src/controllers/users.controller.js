@@ -17,8 +17,18 @@ module.exports = {
         throw err;
       }
 
+      const ifNoneMatch =
+        req.etag?.raw ||
+        req.header("If-None-Match") ||
+        req.header("if-none-match");
       const { user, etag } = await usersService.getMe(userId);
       if (etag) res.set("ETag", etag);
+
+      // Conditional GET: if client's ETag matches current, return 304
+      if (etag && ifNoneMatch && ifNoneMatch === etag) {
+        return res.status(304).end();
+      }
+
       res.status(200).json(user);
     } catch (e) {
       next(e);
@@ -37,7 +47,9 @@ module.exports = {
       }
 
       const ifNoneMatch =
-        req.header("If-None-Match") || req.header("if-none-match");
+        req.etag?.raw ||
+        req.header("If-None-Match") ||
+        req.header("if-none-match");
       const { user, etag } = await usersService.updateMe(
         userId,
         req.body || {},
