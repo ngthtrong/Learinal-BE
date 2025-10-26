@@ -1,55 +1,71 @@
-const buildError = (status, code, message, details) => {
-  const error = new Error(message);
-  error.status = status;
-  error.code = code;
-  if (details) {
-    error.details = details;
-  }
-  return error;
-};
+const { env } = require('../config');
+const { randomUUID, createHash } = require('crypto');
+const jwt = require('jsonwebtoken');
 
-// Stub JWT authentication middleware: accepts any Bearer token
+// Stub/real JWT authentication middleware
 function authenticateJWT(req, res, next) {
-  const authHeader = req.headers.authorization || req.headers.Authorization;
+  const mode = process.env.AUTH_MODE || env.authMode || 'stub';
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return next(buildError(401, "Unauthorized", "Authentication required"));
+  if (mode === 'stub') {
+    // In stub mode, allow dev headers or a simple Bearer stub token
+    const devUserId = req.headers['x-dev-user-id'];
+    const devUserRole = req.headers['x-dev-user-role'] || 'Learner';
+    const authz = req.headers['authorization'] || '';
+
+    let userId = devUserId;
+    let role = devUserRole;
+
+    if (!userId && authz.startsWith('Bearer stub:')) {
+      // Format: Bearer stub:{userId}:{role}
+      const parts = authz.replace('Bearer ', '').split(':');
+      userId = parts[1] || randomUUID();
+      role = parts[2] || 'Learner';
+    }
+
+    if (!userId) {
+      return res.status(401).json({ code: 'Unauthorized', message: 'Authentication required (stub mode)' });
+    }
+
+    // Normalize stub user id to a valid MongoDB ObjectId-like hex string so Mongoose can cast it
+    const toObjectIdHex = (val) => {
+      const s = String(val).trim();
+      const isHex24 = /^[a-fA-F0-9]{24}$/.test(s);
+      if (isHex24) return s.toLowerCase();
+      // Derive a deterministic 24-hex from the input using SHA-1
+      return createHash('sha1').update(s).digest('hex').slice(0, 24);
+    };
+
+    const normalizedId = toObjectIdHex(userId);
+
+    req.user = {
+      id: normalizedId,
+      role,
+      email: `${userId}@example.test`,
+      fullName: 'Stub User',
+      status: 'Active',
+    };
+    return next();
   }
 
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    return next(buildError(401, "Unauthorized", "Authentication required"));
+  // Real mode: verify Bearer JWT signed by our API
+  const authz = req.headers['authorization'] || '';
+  if (!authz.startsWith('Bearer ')) {
+    return res.status(401).json({ code: 'Unauthorized', message: 'Authentication required' });
   }
-
-  const userIdHeader =
-    req.headers["x-dev-user-id"] || req.headers["X-Dev-User-Id"];
-  const emailHeader =
-    req.headers["x-dev-user-email"] || req.headers["X-Dev-User-Email"];
-  const roleHeader =
-    req.headers["x-dev-user-role"] || req.headers["X-Dev-User-Role"];
-
-  const userId =
-    typeof userIdHeader === "string" && userIdHeader.trim().length
-      ? userIdHeader.trim()
-      : "stub-user";
-
-  const role =
-    typeof roleHeader === "string" && roleHeader.trim().length
-      ? roleHeader.trim()
-      : "Learner";
-
-  req.user = {
-    id: userId,
-    userId,
-    email: typeof emailHeader === "string" ? emailHeader.trim() || null : null,
-    role,
-    token,
-    isStub: true,
-  };
-
-  req.authToken = token;
-
-  return next();
+  const token = authz.substring('Bearer '.length);
+  try {
+    const payload = jwt.verify(token, env.jwtSecret);
+    req.user = {
+      id: payload.sub,
+      role: payload.role,
+      email: payload.email,
+      fullName: payload.name,
+      status: payload.status || 'Active',
+    };
+    return next();
+  } catch (e) {
+    return res.status(401).json({ code: 'Unauthorized', message: 'Invalid token' });
+  }
 }
 
 module.exports = authenticateJWT;

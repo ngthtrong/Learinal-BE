@@ -1,6 +1,8 @@
 module.exports = {
   provider: 'gemini',
+  // Prefer stable v1 models; override with GEMINI_MODEL if needed (e.g., gemini-1.5-pro)
+  model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   apiKey: process.env.GEMINI_API_KEY || '',
-  timeoutMs: 30_000,
-  retries: 2,
+  timeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || '30000', 10),
+  retries: parseInt(process.env.LLM_RETRIES || '2', 10),
 };

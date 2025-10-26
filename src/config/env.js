@@ -25,6 +25,14 @@ const env = {
   s3Bucket: process.env.S3_BUCKET || '',
   s3Region: process.env.S3_REGION || '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+
+  // Feature flags / modes (stub vs real, etc.)
+  authMode: process.env.AUTH_MODE || 'stub',
+  llmMode: process.env.LLM_MODE || 'stub',
+  queueMode: process.env.QUEUE_MODE || 'stub',
+  storageMode: process.env.STORAGE_MODE || 'local',
+  paymentMode: process.env.PAYMENT_MODE || 'stub',
+  dbMode: process.env.DB_MODE || 'mongo',
 };
 
 module.exports = env;

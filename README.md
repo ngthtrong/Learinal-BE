@@ -269,3 +269,35 @@ Ghi chú: Danh sách trên phản ánh toàn bộ bề mặt API trong `docs/api
 - [ ] Admin users list (tối thiểu)
 - [ ] Subscriptions (read-only + tạo đơn, TBC thanh toán)
 - [ ] Webhooks Stripe (sau)
+
+---
+
+## Try it locally (stub mode)
+
+Quick start for BE1 endpoints with no external deps:
+
+1) Set env to stub/dev (skip Mongo):
+
+   - AUTH_MODE=stub
+   - DB_MODE=memory
+
+2) Run the server:
+
+```powershell
+$env:AUTH_MODE="stub"; $env:DB_MODE="memory"; npm run start
+```
+
+3) Call endpoints:
+
+- Health: GET http://localhost:3000/api/v1/health
+- Exchange token (stub): POST http://localhost:3000/api/v1/auth/exchange
+  - Headers: `X-Dev-User-Id: demo-user-1`, `X-Dev-User-Role: Admin`
+- Get me: GET http://localhost:3000/api/v1/users/me
+  - Headers: `X-Dev-User-Id: demo-user-1`
+- Patch me with ETag:
+  - First GET /users/me to read `ETag`
+  - PATCH /users/me with header `If-None-Match: <etag-from-GET>` and body `{ "fullName": "New Name" }`
+- Admin list users: GET http://localhost:3000/api/v1/admin/users
+  - Headers: `X-Dev-User-Id: demo-user-1`, `X-Dev-User-Role: Admin`
+
+Move to BE2/BE3 endpoints after BE1 is verified.
