@@ -22,13 +22,27 @@ async function start() {
     }
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Failed to connect to MongoDB', err);
+    console.error("Failed to connect to MongoDB", err);
     process.exit(1);
   }
 
   server.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(`Learinal API listening on port ${PORT}`);
+  });
+
+  // Handle common server errors (e.g., port already in use)
+  server.on("error", (err) => {
+    if (err && err.code === "EADDRINUSE") {
+      // eslint-disable-next-line no-console
+      console.error(
+        `Port ${PORT} is already in use. Set a different PORT env or stop the other process.`
+      );
+    } else {
+      // eslint-disable-next-line no-console
+      console.error("Server error:", err);
+    }
+    process.exit(1);
   });
 }
 
@@ -48,4 +62,4 @@ function shutdown(signal) {
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 
-['SIGINT', 'SIGTERM'].forEach((sig) => process.on(sig, () => shutdown(sig)));
+["SIGINT", "SIGTERM"].forEach((sig) => process.on(sig, () => shutdown(sig)));
