@@ -56,4 +56,9 @@ async function idempotencyKey(req, res, next) {
   next();
 }
 
-module.exports = idempotencyKey;
+module.exports = {
+  InMemoryIdempotencyStore,
+  requireIdempotencyKey,
+  idempotencyKey,
+  makeCompositeKey,
+};
