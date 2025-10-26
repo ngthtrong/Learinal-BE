@@ -1,64 +1,73 @@
-const UsersService = require("../services/users.service");
-const { createRepositories } = require("../repositories");
+const { env } = require('../config');
 
-const { usersRepository } = createRepositories();
-const usersService = new UsersService({ usersRepository });
+// Simple in-memory ETag store for stub mode
+const etags = new Map(); // userId -> etag string
+
+function buildETagFromNow() {
+  return `W/"t${Date.now()}"`;
+}
 
 module.exports = {
+  // GET /users/me
   me: async (req, res, next) => {
     try {
-      const userId = req.user?.userId || req.user?.id;
-      const isValidObjectId =
-        typeof userId === "string" && /^[a-fA-F0-9]{24}$/.test(userId);
-      if (!isValidObjectId) {
-        const err = new Error("Authentication required");
-        err.status = 401;
-        err.code = "Unauthorized";
-        throw err;
+      const user = req.user;
+      if (!user) return res.status(401).json({ code: 'Unauthorized', message: 'Authentication required' });
+
+      // Provide a synthetic ETag (tied to last seen value in memory)
+      let etag = etags.get(user.id);
+      if (!etag) {
+        etag = buildETagFromNow();
+        etags.set(user.id, etag);
       }
+      res.setHeader('ETag', etag);
 
-      const ifNoneMatch =
-        req.etag?.raw ||
-        req.header("If-None-Match") ||
-        req.header("if-none-match");
-      const { user, etag } = await usersService.getMe(userId);
-      if (etag) res.set("ETag", etag);
-
-      // Conditional GET: if client's ETag matches current, return 304
-      if (etag && ifNoneMatch && ifNoneMatch === etag) {
-        return res.status(304).end();
-      }
-
-      res.status(200).json(user);
-    } catch (e) {
-      next(e);
-    }
+      return res.status(200).json({
+        id: user.id,
+        fullName: user.fullName || 'Stub User',
+        email: user.email,
+        role: user.role,
+        status: user.status || 'Active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) { next(e); }
   },
+
+  // PATCH /users/me (requires If-None-Match)
   updateMe: async (req, res, next) => {
     try {
-      const userId = req.user?.userId || req.user?.id;
-      const isValidObjectId =
-        typeof userId === "string" && /^[a-fA-F0-9]{24}$/.test(userId);
-      if (!isValidObjectId) {
-        const err = new Error("Authentication required");
-        err.status = 401;
-        err.code = "Unauthorized";
-        throw err;
+      const mode = process.env.AUTH_MODE || env.authMode || 'stub';
+      const user = req.user;
+      if (!user) return res.status(401).json({ code: 'Unauthorized', message: 'Authentication required' });
+
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (!ifNoneMatch) {
+        return res.status(400).json({ code: 'ValidationError', message: 'Missing If-None-Match header' });
       }
 
-      const ifNoneMatch =
-        req.etag?.raw ||
-        req.header("If-None-Match") ||
-        req.header("if-none-match");
-      const { user, etag } = await usersService.updateMe(
-        userId,
-        req.body || {},
-        ifNoneMatch
-      );
-      if (etag) res.set("ETag", etag);
-      res.status(200).json(user);
-    } catch (e) {
-      next(e);
-    }
+      const currentEtag = etags.get(user.id) || 'W/"t0"';
+      // In stub mode, we accept any If-None-Match that equals the current stored value
+      if (ifNoneMatch !== currentEtag) {
+        return res.status(412).json({ code: 'PreconditionFailed', message: 'ETag mismatch' });
+      }
+
+      // Apply allowed updates (only fullName for now in stub)
+      const { fullName } = req.body || {};
+      const nextUser = {
+        id: user.id,
+        fullName: fullName || user.fullName || 'Stub User',
+        email: user.email,
+        role: user.role,
+        status: user.status || 'Active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const newEtag = buildETagFromNow();
+      etags.set(user.id, newEtag);
+      res.setHeader('ETag', newEtag);
+      return res.status(200).json(nextUser);
+    } catch (e) { next(e); }
   },
 };
