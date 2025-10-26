@@ -1,0 +1,270 @@
+{
+  "info": {
+    "name": "Learinal API",
+    "_postman_id": "f7e8a2c8-0d7e-4b44-9f6a-7c8d8e7e9f01",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for Learinal backend (Express + MongoDB). Uses stub auth by default."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001/api/v1" },
+    { "key": "auth", "value": "Bearer stub:demo-user:Learner" },
+    { "key": "adminAuth", "value": "Bearer stub:admin-1:Admin" },
+    { "key": "subjectId", "value": "" },
+    { "key": "questionSetId", "value": "" },
+    { "key": "quizAttemptId", "value": "" },
+    { "key": "documentId", "value": "" },
+    { "key": "etag_me", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "GET /users/me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Capture ETag for PATCH",
+                  "var et = pm.response.headers.get('ETag');",
+                  "if (et) { pm.collectionVariables.set('etag_me', et); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+          }
+        },
+        {
+          "name": "PATCH /users/me (uses If-None-Match)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "{{auth}}" },
+              { "key": "If-None-Match", "value": "{{etag_me}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"New Name\"\n}" },
+            "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "item": [
+        {
+          "name": "GET /subjects",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/subjects", "host": ["{{baseUrl}}"], "path": ["subjects"] } }
+        },
+        {
+          "name": "POST /subjects",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.id) { pm.collectionVariables.set('subjectId', json.id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"subjectName\": \"Biology\",\n  \"description\": \"Cells and genetics\"\n}" },
+            "url": { "raw": "{{baseUrl}}/subjects", "host": ["{{baseUrl}}"], "path": ["subjects"] }
+          }
+        },
+        {
+          "name": "GET /subjects/:id",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/subjects/{{subjectId}}", "host": ["{{baseUrl}}"], "path": ["subjects", "{{subjectId}}"] } }
+        },
+        {
+          "name": "PATCH /subjects/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"Updated description\"\n}" },
+            "url": { "raw": "{{baseUrl}}/subjects/{{subjectId}}", "host": ["{{baseUrl}}"], "path": ["subjects", "{{subjectId}}"] }
+          }
+        },
+        {
+          "name": "DELETE /subjects/:id",
+          "request": { "method": "DELETE", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/subjects/{{subjectId}}", "host": ["{{baseUrl}}"], "path": ["subjects", "{{subjectId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "POST /documents (form-data)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.id) { pm.collectionVariables.set('documentId', json.id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "subjectId", "value": "{{subjectId}}", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/documents", "host": ["{{baseUrl}}"], "path": ["documents"] }
+          }
+        },
+        {
+          "name": "GET /documents/:id",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/documents/{{documentId}}", "host": ["{{baseUrl}}"], "path": ["documents", "{{documentId}}"] } }
+        },
+        {
+          "name": "GET /documents/:id/summary",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/documents/{{documentId}}/summary", "host": ["{{baseUrl}}"], "path": ["documents", "{{documentId}}", "summary"] } }
+        }
+      ]
+    },
+    {
+      "name": "Question Sets",
+      "item": [
+        {
+          "name": "GET /question-sets",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/question-sets", "host": ["{{baseUrl}}"], "path": ["question-sets"] } }
+        },
+        {
+          "name": "POST /question-sets/generate",
+          "event": [ { "listen": "prerequest", "script": { "exec": [
+            "// Ensure Idempotency-Key header is set",
+            "if (!pm.request.headers.has('Idempotency-Key')) {",
+            "  pm.request.headers.add({ key: 'Idempotency-Key', value: pm.variables.replaceIn('{{$guid}}') });",
+            "}"
+          ], "type": "text/javascript" } },
+          { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.id) { pm.collectionVariables.set('questionSetId', json.id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"subjectId\": \"{{subjectId}}\",\n  \"title\": \"Algebra practice\",\n  \"numQuestions\": 5,\n  \"difficulty\": \"Hiểu\"\n}" },
+            "url": { "raw": "{{baseUrl}}/question-sets/generate", "host": ["{{baseUrl}}"], "path": ["question-sets", "generate"] }
+          }
+        },
+        {
+          "name": "GET /question-sets/:id",
+          "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/question-sets/{{questionSetId}}", "host": ["{{baseUrl}}"], "path": ["question-sets", "{{questionSetId}}"] } }
+        },
+        {
+          "name": "PATCH /question-sets/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Algebra practice v2\"\n}" },
+            "url": { "raw": "{{baseUrl}}/question-sets/{{questionSetId}}", "host": ["{{baseUrl}}"], "path": ["question-sets", "{{questionSetId}}"] }
+          }
+        },
+        {
+          "name": "POST /question-sets/:id/share",
+          "request": { "method": "POST", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/question-sets/{{questionSetId}}/share", "host": ["{{baseUrl}}"], "path": ["question-sets", "{{questionSetId}}", "share"] } }
+        },
+        {
+          "name": "POST /question-sets/:id/review",
+          "request": { "method": "POST", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/question-sets/{{questionSetId}}/review", "host": ["{{baseUrl}}"], "path": ["question-sets", "{{questionSetId}}", "review"] } }
+        }
+      ]
+    },
+    {
+      "name": "Quiz Attempts",
+      "item": [
+        {
+          "name": "POST /quiz-attempts",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.id) { pm.collectionVariables.set('quizAttemptId', json.id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"setId\": \"{{questionSetId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/quiz-attempts", "host": ["{{baseUrl}}"], "path": ["quiz-attempts"] }
+          }
+        },
+        {
+          "name": "POST /quiz-attempts/:id/submit",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"answers\": [\n    { \"questionId\": \"q1\", \"selectedOptionIndex\": 1 }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/quiz-attempts/{{quizAttemptId}}/submit", "host": ["{{baseUrl}}"], "path": ["quiz-attempts", "{{quizAttemptId}}", "submit"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        { "name": "GET /notifications", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/notifications", "host": ["{{baseUrl}}"], "path": ["notifications"] } } },
+        { "name": "PATCH /notifications/:id", "request": { "method": "PATCH", "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"isRead\": true\n}" }, "url": { "raw": "{{baseUrl}}/notifications/{{notificationId}}", "host": ["{{baseUrl}}"], "path": ["notifications", "{{notificationId}}"] } } }
+      ]
+    },
+    {
+      "name": "Validation Requests",
+      "item": [
+        { "name": "GET /validation-requests", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/validation-requests", "host": ["{{baseUrl}}"], "path": ["validation-requests"] } } },
+        { "name": "GET /validation-requests/:id", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] } } },
+        { "name": "PATCH /validation-requests/:id", "request": { "method": "PATCH", "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"status\": \"Assigned\"\n}" }, "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] } } }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "GET /admin/users (Admin role)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{adminAuth}}" } ],
+            "url": { "raw": "{{baseUrl}}/admin/users", "host": ["{{baseUrl}}"], "path": ["admin", "users"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth (optional real flow)",
+      "item": [
+        {
+          "name": "POST /auth/exchange",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"google\",\n  \"code\": \"<oauth_code>\",\n  \"redirectUri\": \"<redirect_uri>\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/exchange", "host": ["{{baseUrl}}"], "path": ["auth", "exchange"] }
+          }
+        },
+        {
+          "name": "POST /auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"<refresh_token>\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] }
+          }
+        }
+      ]
+    }
+  ]
+}
