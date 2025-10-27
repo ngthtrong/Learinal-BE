@@ -188,8 +188,9 @@ module.exports = {
         return res.status(400).json({ code: "ValidationError", message: "Invalid token" });
       }
       const userId = decoded.sub;
+      // Activate account: set status to Active
       const updated = await usersRepo.updateUserById(userId, {
-        emailVerified: true,
+        status: "Active",
       });
       if (!updated) {
         return res.status(404).json({ code: "NotFound", message: "User not found" });
@@ -206,8 +207,8 @@ module.exports = {
       const { email } = req.body || {};
       const normalizedEmail = (email || "").toLowerCase().trim();
       const user = await usersRepo.findByEmail(normalizedEmail);
-      // Always 200; only send when user exists and not verified
-      if (user && !user.emailVerified) {
+      // Always 200; only send when user exists and not Active
+      if (user && user.status !== "Active") {
         const token = jwt.sign({ sub: user.id, type: "email-verify" }, env.emailVerifySecret, {
           expiresIn: env.emailVerifyExpiresIn,
         });
@@ -250,14 +251,13 @@ module.exports = {
       const saltRounds = 12;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      // Create user
+      // Create user: start as PendingActivation; user must verify to become Active
       const created = await usersRepo.createUser({
         fullName: fullName.trim(),
         email: normalizedEmail,
         hashedPassword,
         role: "Learner",
-        status: "Active",
-        emailVerified: false,
+        status: "PendingActivation",
       });
 
       // Send verification email (best-effort)
@@ -319,9 +319,9 @@ module.exports = {
         return res.status(401).json({ code: "Unauthorized", message: "Invalid email or password" });
       }
 
-      // Enforce email verification if enabled
-      if (env.requireEmailVerifiedForLogin && userWithSensitive.emailVerified === false) {
-        return res.status(403).json({ code: "Forbidden", message: "Email not verified" });
+      // Enforce account status: only Active accounts can login
+      if (userWithSensitive.status !== "Active") {
+        return res.status(403).json({ code: "Forbidden", message: "Account not active" });
       }
 
       // Remove sensitive field from response
@@ -367,12 +367,13 @@ module.exports = {
       // Find or create user in Mongo so our JWT 'sub' is our own user id
       let user = await usersRepo.findByEmail(normalizedEmail);
       if (!user) {
+        // If provider reports email_verified, activate immediately; otherwise keep PendingActivation
+        const isVerified = Boolean(profile.email_verified ?? true);
         user = await usersRepo.createUser({
           fullName: profile.name || normalizedEmail,
           email: normalizedEmail,
           role: "Learner",
-          status: "Active",
-          emailVerified: Boolean(profile.email_verified ?? true),
+          status: isVerified ? "Active" : "PendingActivation",
         });
       }
 

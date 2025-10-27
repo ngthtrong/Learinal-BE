@@ -14,15 +14,11 @@ const normalizeUser = (doc, { includeSensitive = false } = {}) => {
   const subscriptionRenewalDate =
     plain.subscriptionRenewalDate instanceof Date
       ? plain.subscriptionRenewalDate.toISOString()
-      : plain.subscriptionRenewalDate ?? null;
+      : (plain.subscriptionRenewalDate ?? null);
   const createdAt =
-    plain.createdAt instanceof Date
-      ? plain.createdAt.toISOString()
-      : plain.createdAt;
+    plain.createdAt instanceof Date ? plain.createdAt.toISOString() : plain.createdAt;
   const updatedAt =
-    plain.updatedAt instanceof Date
-      ? plain.updatedAt.toISOString()
-      : plain.updatedAt;
+    plain.updatedAt instanceof Date ? plain.updatedAt.toISOString() : plain.updatedAt;
 
   // Build DTO with desired field order (id first) and without userId
   const dto = {
@@ -31,8 +27,6 @@ const normalizeUser = (doc, { includeSensitive = false } = {}) => {
     fullName: plain.fullName,
     role: plain.role,
     status: plain.status,
-    emailVerified:
-      plain.emailVerified === undefined ? false : plain.emailVerified,
     subscriptionPlanId,
     subscriptionStatus: plain.subscriptionStatus,
     subscriptionRenewalDate,
@@ -110,14 +104,8 @@ class UsersRepository extends BaseRepository {
   }
 
   async updateUserById(userId, update, options = {}) {
-    const {
-      includeSensitive = false,
-      projection = null,
-      new: returnNew = true,
-    } = options;
-    const hasOperator = Object.keys(update || {}).some((key) =>
-      key.startsWith("$")
-    );
+    const { includeSensitive = false, projection = null, new: returnNew = true } = options;
+    const hasOperator = Object.keys(update || {}).some((key) => key.startsWith("$"));
     const updatePayload = hasOperator ? update : { $set: update };
     const doc = await this.model
       .findOneAndUpdate({ _id: userId }, updatePayload, {
@@ -168,12 +156,7 @@ class UsersRepository extends BaseRepository {
 
     const skip = (page - 1) * pageSize;
     const [items, totalItems] = await Promise.all([
-      this.model
-        .find(filter, projection)
-        .sort(sort)
-        .skip(skip)
-        .limit(pageSize)
-        .lean(),
+      this.model.find(filter, projection).sort(sort).skip(skip).limit(pageSize).lean(),
       this.model.countDocuments(filter),
     ]);
 

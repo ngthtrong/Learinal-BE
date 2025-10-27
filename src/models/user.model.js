@@ -27,11 +27,6 @@ const UserSchema = new Schema(
       default: undefined,
       select: false,
     },
-    emailVerified: {
-      type: Boolean,
-      required: true,
-      default: false,
-    },
     role: {
       type: String,
       enum: ROLES,
