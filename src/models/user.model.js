@@ -20,9 +20,17 @@ const UserSchema = new Schema(
       trim: true,
       match: /.+@.+\..+/,
     },
+    // Optional for OAuth-only accounts; present for local credentials
     hashedPassword: {
       type: String,
+      required: false,
+      default: undefined,
+      select: false,
+    },
+    emailVerified: {
+      type: Boolean,
       required: true,
+      default: false,
     },
     role: {
       type: String,
@@ -58,6 +66,8 @@ const UserSchema = new Schema(
   }
 );
 
+// Deprecated: userId virtual was used historically; prefer `id` in API responses.
+// Keep the virtual for internal usage if needed, but remove it from API output in transform.
 UserSchema.virtual("userId").get(function userIdGetter() {
   return this._id ? this._id.toHexString() : undefined;
 });
@@ -70,7 +80,6 @@ const transformUser = (_, ret) => {
   if (ret._id) {
     const id = ret._id.toString();
     ret.id = id;
-    ret.userId = id;
   }
 
   if (ret.subscriptionPlanId && ret.subscriptionPlanId.toString) {
@@ -90,6 +99,10 @@ const transformUser = (_, ret) => {
     ret.updatedAt = ret.updatedAt.toISOString();
   }
 
+  // Ensure legacy userId field is not exposed in API responses
+  if (ret.userId !== undefined) {
+    delete ret.userId;
+  }
   delete ret._id;
   delete ret.__v;
   delete ret.hashedPassword;

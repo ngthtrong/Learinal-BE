@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const routes = require("./routes");
 const healthRoutes = require("./routes/health.routes");
 const requestId = require("./middleware/requestId");
@@ -16,6 +17,13 @@ app.use(express.urlencoded({ extended: true }));
 
 // Public health endpoint (no auth required)
 app.use("/health", healthRoutes);
+
+// Serve minimal static frontend for testing password reset links
+const publicDir = path.join(__dirname, "..", "public");
+app.use(express.static(publicDir));
+app.get("/reset-password", (req, res) => {
+  res.sendFile(path.join(publicDir, "reset-password.html"));
+});
 
 // Base URL: /api/v1
 app.use("/api/v1", routes);

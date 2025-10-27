@@ -1,6 +1,7 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
+const logger = require("../utils/logger");
 
-mongoose.set('strictQuery', true);
+mongoose.set("strictQuery", true);
 
 async function connectMongoose(uri, dbName) {
   await mongoose.connect(uri, {
@@ -8,15 +9,13 @@ async function connectMongoose(uri, dbName) {
     serverSelectionTimeoutMS: 15000,
     maxPoolSize: 10,
   });
-  // eslint-disable-next-line no-console
-  console.log(`Mongoose connected to db=${dbName}`);
+  logger.info({ db: dbName }, "Mongoose connected");
   return mongoose.connection;
 }
 
 async function disconnectMongoose() {
   await mongoose.disconnect();
-  // eslint-disable-next-line no-console
-  console.log('Mongoose disconnected');
+  logger.info("Mongoose disconnected");
 }
 
 module.exports = { connectMongoose, disconnectMongoose };

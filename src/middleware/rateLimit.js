@@ -1,6 +1,5 @@
-const { env } = require('../config');
-const rateLimitLib = require('express-rate-limit');
-const { getNodeRedis } = require('../config/redis');
+const rateLimitLib = require("express-rate-limit");
+const { getNodeRedis } = require("../config/redis");
 
 // Custom Redis store compatible with express-rate-limit v7
 function createRedisStore(windowMs) {
@@ -8,7 +7,7 @@ function createRedisStore(windowMs) {
   return {
     async increment(key) {
       const client = await getNodeRedis();
-      if (!client) throw new Error('Redis client not available');
+      if (!client) throw new Error("Redis client not available");
       const multi = client.multi();
       multi.incr(key);
       multi.ttl(key);
@@ -46,8 +45,8 @@ function rateLimit(options = {}) {
     legacyHeaders: false,
     handler: (req, res /*, next*/) => {
       const retryAfter = Math.ceil(windowMs / 1000);
-      res.setHeader('Retry-After', retryAfter);
-      return res.status(429).json({ code: 'TooManyRequests', message: 'Rate limit exceeded' });
+      res.setHeader("Retry-After", retryAfter);
+      return res.status(429).json({ code: "TooManyRequests", message: "Rate limit exceeded" });
     },
   };
 
@@ -57,7 +56,7 @@ function rateLimit(options = {}) {
     : rateLimitLib({ ...baseOptions });
 
   return (req, res, next) => {
-    res.setHeader('X-RateLimit-Limit', limit);
+    res.setHeader("X-RateLimit-Limit", limit);
     limiter(req, res, next);
   };
 }

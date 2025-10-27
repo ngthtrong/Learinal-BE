@@ -1,6 +1,7 @@
-const DocumentsRepository = require('../repositories/documents.repository');
-const { llm } = require('../config');
-const LLMClient = require('../adapters/llmClient');
+const DocumentsRepository = require("../repositories/documents.repository");
+const { llm } = require("../config");
+const LLMClient = require("../adapters/llmClient");
+const logger = require("../utils/logger");
 
 module.exports = async function contentSummary(payload) {
   const { documentId } = payload || {};
@@ -10,23 +11,23 @@ module.exports = async function contentSummary(payload) {
   if (!doc) return;
 
   // Idempotency: if already summarized and marked Completed, skip
-  if ((doc.summaryShort || doc.summaryFull) && doc.status === 'Completed') {
-    // eslint-disable-next-line no-console
-    console.log(`[summary] skip already completed documentId=${documentId}`);
+  if ((doc.summaryShort || doc.summaryFull) && doc.status === "Completed") {
+    logger.info({ documentId }, "[summary] skip already completed");
     return;
   }
 
   const client = new LLMClient(llm);
   try {
-    // eslint-disable-next-line no-console
-    console.log(`[summary] start documentId=${documentId}, textLen=${(doc.extractedText || '').length}`);
-    const { summaryShort, summaryFull } = await client.summarize({ text: doc.extractedText || '' });
-    await docsRepo.updateById(documentId, { $set: { summaryShort, summaryFull, summaryUpdatedAt: new Date(), status: 'Completed' } }, { new: true });
-    // eslint-disable-next-line no-console
-    console.log(`[summary] completed documentId=${documentId}`);
+    logger.info({ documentId, textLen: (doc.extractedText || "").length }, "[summary] start");
+    const { summaryShort, summaryFull } = await client.summarize({ text: doc.extractedText || "" });
+    await docsRepo.updateById(
+      documentId,
+      { $set: { summaryShort, summaryFull, summaryUpdatedAt: new Date(), status: "Completed" } },
+      { new: true }
+    );
+    logger.info({ documentId }, "[summary] completed");
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error(`[summary] failed documentId=${documentId}:`, e?.message || e);
-    await docsRepo.updateById(documentId, { $set: { status: 'Error' } }, { new: true });
+    logger.error({ documentId, err: e?.message || e }, "[summary] failed");
+    await docsRepo.updateById(documentId, { $set: { status: "Error" } }, { new: true });
   }
 };

@@ -1,15 +1,15 @@
 // Idempotency-Key store: Redis (if REDIS_URL) else in-memory
 const store = new Map(); // fallback when Redis not configured
-const { getNodeRedis } = require('../config/redis');
+const { getNodeRedis } = require("../config/redis");
 
 function makeKey(req) {
-  const userId = (req.user && req.user.id) || 'anon';
-  const key = req.headers['idempotency-key'];
+  const userId = (req.user && req.user.id) || "anon";
+  const key = req.headers["idempotency-key"];
   return `${userId}:${req.method}:${req.originalUrl}:${key}`;
 }
 
 async function idempotencyKey(req, res, next) {
-  const key = req.headers['idempotency-key'];
+  const key = req.headers["idempotency-key"];
   if (!key) return next(); // Optional per OpenAPI
 
   const composite = makeKey(req);
@@ -29,7 +29,7 @@ async function idempotencyKey(req, res, next) {
         return;
       }
     }
-  } catch (e) {
+  } catch {
     // On Redis error, fall through without blocking
   }
 
@@ -42,11 +42,13 @@ async function idempotencyKey(req, res, next) {
         const redis = await getNodeRedis();
         if (redis) {
           // Default TTL 24h
-          await redis.set(composite, JSON.stringify(record), { EX: 60 * 60 * 24 });
+          await redis.set(composite, JSON.stringify(record), {
+            EX: 60 * 60 * 24,
+          });
         } else {
           store.set(composite, record);
         }
-      } catch (e) {
+      } catch {
         store.set(composite, record);
       }
     }
@@ -56,9 +58,4 @@ async function idempotencyKey(req, res, next) {
   next();
 }
 
-module.exports = {
-  InMemoryIdempotencyStore,
-  requireIdempotencyKey,
-  idempotencyKey,
-  makeCompositeKey,
-};
+module.exports = idempotencyKey;

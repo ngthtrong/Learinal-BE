@@ -16,9 +16,7 @@ class AuthService {
     const nowSec = Math.floor(Date.now() / 1000);
     const header = { alg: "none", typ: "JWT" };
     const body = { iat: nowSec, exp: nowSec + expiresInSec, ...payload };
-    const token = `${AuthService.base64url(header)}.${AuthService.base64url(
-      body
-    )}.stub`;
+    const token = `${AuthService.base64url(header)}.${AuthService.base64url(body)}.stub`;
     return token;
   }
 
@@ -28,7 +26,7 @@ class AuthService {
     return `stub-refresh.${AuthService.base64url(body)}`;
   }
 
-  async exchangeCode({ code, redirectUri, user } = {}) {
+  async exchangeCode({ _code, _redirectUri, user } = {}) {
     // Stub: accept any code, generate fake tokens
     const sub = user?.userId || user?.id || "stub-user";
     const role = user?.role || "Learner";
@@ -40,7 +38,7 @@ class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refreshToken({ refreshToken, user } = {}) {
+  async refreshToken({ _refreshToken, user } = {}) {
     // Stub: accept any refresh token, return new tokens
     const sub = user?.userId || user?.id || "stub-user";
     const role = user?.role || "Learner";

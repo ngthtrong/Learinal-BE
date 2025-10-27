@@ -2,42 +2,49 @@ const BaseRepository = require("./base.repository");
 const { User } = require("../models");
 
 const normalizeUser = (doc, { includeSensitive = false } = {}) => {
-  if (!doc) {
-    return null;
-  }
+  if (!doc) return null;
 
   const plain = { ...doc };
   const id = plain._id?.toString?.() || plain.id || plain.userId;
-  if (id) {
-    plain.id = id;
-    plain.userId = id;
+
+  // Normalize primitives/conversions
+  const subscriptionPlanId =
+    plain.subscriptionPlanId?.toString?.() ??
+    (plain.subscriptionPlanId === undefined ? null : plain.subscriptionPlanId);
+  const subscriptionRenewalDate =
+    plain.subscriptionRenewalDate instanceof Date
+      ? plain.subscriptionRenewalDate.toISOString()
+      : plain.subscriptionRenewalDate ?? null;
+  const createdAt =
+    plain.createdAt instanceof Date
+      ? plain.createdAt.toISOString()
+      : plain.createdAt;
+  const updatedAt =
+    plain.updatedAt instanceof Date
+      ? plain.updatedAt.toISOString()
+      : plain.updatedAt;
+
+  // Build DTO with desired field order (id first) and without userId
+  const dto = {
+    id: id,
+    email: plain.email,
+    fullName: plain.fullName,
+    role: plain.role,
+    status: plain.status,
+    emailVerified:
+      plain.emailVerified === undefined ? false : plain.emailVerified,
+    subscriptionPlanId,
+    subscriptionStatus: plain.subscriptionStatus,
+    subscriptionRenewalDate,
+    createdAt,
+    updatedAt,
+  };
+
+  if (includeSensitive) {
+    dto.hashedPassword = plain.hashedPassword;
   }
 
-  if (plain.subscriptionPlanId && plain.subscriptionPlanId.toString) {
-    plain.subscriptionPlanId = plain.subscriptionPlanId.toString();
-  }
-  if (plain.subscriptionPlanId === undefined) {
-    plain.subscriptionPlanId = null;
-  }
-
-  if (plain.subscriptionRenewalDate instanceof Date) {
-    plain.subscriptionRenewalDate = plain.subscriptionRenewalDate.toISOString();
-  }
-  if (plain.createdAt instanceof Date) {
-    plain.createdAt = plain.createdAt.toISOString();
-  }
-  if (plain.updatedAt instanceof Date) {
-    plain.updatedAt = plain.updatedAt.toISOString();
-  }
-
-  if (!includeSensitive) {
-    delete plain.hashedPassword;
-  }
-
-  delete plain._id;
-  delete plain.__v;
-
-  return plain;
+  return dto;
 };
 
 class UsersRepository extends BaseRepository {
@@ -72,9 +79,12 @@ class UsersRepository extends BaseRepository {
 
     const { projection = null, includeSensitive = false } = options;
     const normalizedEmail = email.toLowerCase().trim();
-    const doc = await this.model
-      .findOne({ email: normalizedEmail }, projection)
-      .lean();
+    const query = this.model.findOne({ email: normalizedEmail }, projection);
+    if (includeSensitive && !projection) {
+      // Explicitly include hashedPassword when requested
+      query.select("+hashedPassword");
+    }
+    const doc = await query.lean();
     return normalizeUser(doc, { includeSensitive });
   }
 
