@@ -6,7 +6,7 @@ Bạn là LLM hỗ trợ triển khai backend Learinal theo kiến trúc Express
 
 - Nhiệm vụ: Sinh mã và/hoặc đề xuất thay đổi cho backend API Learinal theo OpenAPI 3.1 và SDD/MongoDB schema đi kèm.
 - Phạm vi: Web backend (không mobile native), API JSON, bảo mật OAuth/JWT, MongoDB, xử lý nền (jobs) cho tác vụ LLM/email/ingestion.
-- Không làm: UI, mobile app, các tính năng ngoài phạm vi SRS 0.1.
+- Không làm: UI, mobile app, các tính năng ngoài phạm vi SRS
 
 ### 2) Công nghệ bắt buộc
 

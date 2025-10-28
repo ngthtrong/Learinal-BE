@@ -1,9 +1,10 @@
 const { randomUUID } = require("crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { env, email: emailCfg } = require("../config");
+const { env, email: emailCfg, oauth: oauthCfg } = require("../config");
 const logger = require("../utils/logger");
 const OAuthClient = require("../adapters/oauthClient");
+const AuthService = require("../services/auth.service");
 const UsersRepository = require("../repositories/users.repository");
 const EmailClient = require("../adapters/emailClient");
 const RefreshTokensRepository = require("../repositories/refreshTokens.repository");
@@ -11,6 +12,20 @@ const RefreshTokensRepository = require("../repositories/refreshTokens.repositor
 const usersRepo = new UsersRepository();
 const emailClient = new EmailClient(emailCfg);
 const refreshRepo = new RefreshTokensRepository();
+
+// Initialize Auth Service
+const oauthClient = new OAuthClient(oauthCfg);
+const authService = new AuthService({
+  oauthClient,
+  usersRepository: usersRepo,
+  refreshTokensRepository: refreshRepo,
+  config: {
+    jwtSecret: env.jwtSecret,
+    jwtRefreshSecret: env.jwtRefreshSecret,
+    jwtExpiresIn: env.jwtExpiresIn,
+    jwtRefreshExpiresIn: env.jwtRefreshExpiresIn,
+  },
+});
 
 function buildStubTokens(user) {
   const now = Date.now();
@@ -337,7 +352,9 @@ module.exports = {
   exchange: async (req, res, next) => {
     try {
       const mode = process.env.AUTH_MODE || env.authMode || "stub";
+      
       if (mode === "stub") {
+        // Stub mode: for development/testing
         const devUserId = req.headers["x-dev-user-id"] || randomUUID();
         const devUserRole = req.headers["x-dev-user-role"] || "Learner";
         const email = `${devUserId}@example.test`;
@@ -347,39 +364,63 @@ module.exports = {
           email,
           role: devUserRole,
           status: "Active",
+          subscriptionStatus: "None",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
 
-        const body = buildStubTokens(user);
-        return res.status(200).json(body);
-      }
+        const accessToken = authService.generateAccessToken(user);
+        const refreshToken = authService.generateRefreshToken(user, randomUUID());
 
-      // Real mode: Exchange Google code for tokens and issue our JWTs
-      const { code } = req.body || {};
-      if (!code) {
-        return res.status(400).json({ code: "ValidationError", message: "Missing code in body" });
-      }
-      const client = new OAuthClient(env);
-      const { profile } = await client.exchangeCode(code);
-      const normalizedEmail = (profile.email || "").toLowerCase().trim();
-
-      // Find or create user in Mongo so our JWT 'sub' is our own user id
-      let user = await usersRepo.findByEmail(normalizedEmail);
-      if (!user) {
-        // If provider reports email_verified, activate immediately; otherwise keep PendingActivation
-        const isVerified = Boolean(profile.email_verified ?? true);
-        user = await usersRepo.createUser({
-          fullName: profile.name || normalizedEmail,
-          email: normalizedEmail,
-          role: "Learner",
-          status: isVerified ? "Active" : "PendingActivation",
+        return res.status(200).json({
+          accessToken,
+          refreshToken,
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          user,
         });
       }
 
-      const body = await issueTokens("real", user, { req });
-      return res.status(200).json(body);
+      // Real mode: Exchange OAuth code for tokens
+      const { code, redirectUri } = req.body || {};
+      
+      if (!code) {
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "Authorization code is required" 
+        });
+      }
+
+      // Get request metadata
+      const metadata = {
+        userAgent: req.headers["user-agent"] || null,
+        ip: req.ip || req.connection.remoteAddress || null,
+      };
+
+      // Use AuthService to handle OAuth exchange
+      const result = await authService.exchangeCode({ 
+        code, 
+        redirectUri, 
+        metadata 
+      });
+
+      logger.info({ 
+        userId: result.user.id, 
+        email: result.user.email 
+      }, "OAuth exchange successful");
+
+      return res.status(200).json(result);
+
     } catch (err) {
+      logger.error({ error: err.message }, "OAuth exchange failed");
+      
+      if (err.message && err.message.includes("OAuth")) {
+        return res.status(401).json({
+          code: "Unauthorized",
+          message: err.message,
+        });
+      }
+      
       next(err);
     }
   },
@@ -388,7 +429,9 @@ module.exports = {
   refresh: async (req, res, next) => {
     try {
       const mode = process.env.AUTH_MODE || env.authMode || "stub";
+      
       if (mode === "stub") {
+        // Stub mode: for development/testing
         const devUserId = req.headers["x-dev-user-id"] || randomUUID();
         const devUserRole = req.headers["x-dev-user-role"] || "Learner";
         const email = `${devUserId}@example.test`;
@@ -398,49 +441,79 @@ module.exports = {
           email,
           role: devUserRole,
           status: "Active",
+          subscriptionStatus: "None",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        const body = buildStubTokens(user);
-        return res.status(200).json(body);
+
+        const accessToken = authService.generateAccessToken(user);
+        const refreshToken = authService.generateRefreshToken(user, randomUUID());
+
+        return res.status(200).json({
+          accessToken,
+          refreshToken,
+          tokenType: "Bearer",
+          expiresIn: 3600,
+          user,
+        });
       }
 
+      // Real mode: Refresh access token
       const { refreshToken } = req.body || {};
+      
       if (!refreshToken) {
-        return res.status(400).json({ code: "ValidationError", message: "Missing refreshToken" });
-      }
-      let decoded;
-      try {
-        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret);
-      } catch {
-        return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
-      }
-      const sub = decoded.sub;
-      const jti = decoded.jti;
-
-      // If we use stored refresh tokens, validate jti not revoked/expired
-      if (jti) {
-        const valid = await refreshRepo.isValid(jti);
-        if (!valid) {
-          return res.status(401).json({
-            code: "Unauthorized",
-            message: "Refresh token expired or revoked",
-          });
-        }
-        // rotate: revoke old and issue new pair
-        await refreshRepo.revokeByJti(jti);
-        const user = await usersRepo.findByUserId(sub);
-        const body = await issueTokens("real", user, { req });
-        return res.status(200).json(body);
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "Refresh token is required" 
+        });
       }
 
-      // Fallback: if no jti (older JWT style), just issue new access token
-      const payload = { sub, role: "Learner" };
-      const accessToken = jwt.sign(payload, env.jwtSecret, {
-        expiresIn: env.jwtExpiresIn,
+      // Get request metadata
+      const metadata = {
+        userAgent: req.headers["user-agent"] || null,
+        ip: req.ip || req.connection.remoteAddress || null,
+      };
+
+      // Use AuthService to refresh tokens
+      const result = await authService.refreshAccessToken({ 
+        refreshToken, 
+        metadata 
       });
-      return res.status(200).json({ accessToken, tokenType: "Bearer", expiresIn: 3600 });
+
+      logger.info({ 
+        userId: result.user.id 
+      }, "Token refresh successful");
+
+      return res.status(200).json(result);
+
     } catch (err) {
+      logger.error({ error: err.message }, "Token refresh failed");
+      
+      if (err.message && (
+        err.message.includes("Invalid") || 
+        err.message.includes("revoked") || 
+        err.message.includes("expired")
+      )) {
+        return res.status(401).json({
+          code: "Unauthorized",
+          message: err.message,
+        });
+      }
+
+      if (err.message && err.message.includes("User")) {
+        return res.status(404).json({
+          code: "NotFound",
+          message: "User not found",
+        });
+      }
+
+      if (err.message && err.message.includes("deactivated")) {
+        return res.status(403).json({
+          code: "Forbidden",
+          message: "Account is deactivated",
+        });
+      }
+      
       next(err);
     }
   },

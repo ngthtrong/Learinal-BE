@@ -1,54 +1,88 @@
 const SubjectsService = require('../services/subjects.service');
 const service = new SubjectsService();
 
+/**
+ * SubjectsController - HTTP handlers for /subjects endpoints
+ * All endpoints require authentication via JWT
+ */
 module.exports = {
-  // GET /subjects
+  /**
+   * GET /subjects - List all subjects for authenticated user
+   * Query params: page, pageSize, sort (e.g., "-createdAt", "subjectName")
+   */
   list: async (req, res, next) => {
     try {
-      const user = req.user;
+      const userId = req.user.id;
       const page = Math.max(1, parseInt(req.query.page || '1', 10));
       const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      const result = await service.listByUser(user.id, { page, pageSize });
-      res.status(200).json({ items: result.items, meta: { page, pageSize, total: result.totalItems, totalPages: result.totalPages } });
-    } catch (e) { next(e); }
+      const sort = req.query.sort || '-createdAt';
+
+      const result = await service.listByUser(userId, { page, pageSize, sort });
+      
+      // Response envelope: { items, meta }
+      res.status(200).json(result);
+    } catch (e) {
+      next(e);
+    }
   },
 
-  // POST /subjects
+  /**
+   * POST /subjects - Create new subject
+   * Body: { subjectName, description?, tableOfContents?, summary? }
+   */
   create: async (req, res, next) => {
     try {
-      const user = req.user;
-      const created = await service.create(user.id, req.body);
+      const userId = req.user.id;
+      const created = await service.create(userId, req.body);
       res.status(201).json(created);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
 
-  // GET /subjects/:id
+  /**
+   * GET /subjects/:id - Get subject by ID (ownership check)
+   */
   get: async (req, res, next) => {
     try {
-      const user = req.user;
-      const item = await service.getByIdOwned(user.id, req.params.id);
-      if (!item) return res.status(404).json({ code: 'NotFound', message: 'Subject not found' });
+      const userId = req.user.id;
+      const subjectId = req.params.id;
+      
+      const item = await service.getByIdOwned(userId, subjectId);
       res.status(200).json(item);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
 
-  // PATCH /subjects/:id
+  /**
+   * PATCH /subjects/:id - Update subject (ownership check)
+   * Body: { subjectName?, description?, tableOfContents?, summary? }
+   */
   update: async (req, res, next) => {
     try {
-      const user = req.user;
-      const updated = await service.updateOwned(user.id, req.params.id, req.body);
-      if (!updated) return res.status(404).json({ code: 'NotFound', message: 'Subject not found' });
+      const userId = req.user.id;
+      const subjectId = req.params.id;
+      
+      const updated = await service.updateOwned(userId, subjectId, req.body);
       res.status(200).json(updated);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
 
-  // DELETE /subjects/:id
+  /**
+   * DELETE /subjects/:id - Delete subject (ownership check)
+   */
   remove: async (req, res, next) => {
     try {
-      const user = req.user;
-      const ok = await service.removeOwned(user.id, req.params.id);
-      if (!ok) return res.status(404).json({ code: 'NotFound', message: 'Subject not found' });
+      const userId = req.user.id;
+      const subjectId = req.params.id;
+      
+      await service.removeOwned(userId, subjectId);
       res.status(204).send();
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
 };

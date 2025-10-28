@@ -1,3 +1,19 @@
+const SubscriptionPlansRepository = require('../repositories/subscriptionPlans.repository');
+const repo = new SubscriptionPlansRepository();
+
+function map(doc) {
+  if (!doc) return doc;
+  const { _id, __v, ...rest } = doc;
+  return { id: String(_id || rest.id), ...rest };
+}
+
 module.exports = {
-  list: async (req, res, next) => { try { throw Object.assign(new Error('NotImplemented'), { status: 501 }); } catch (e) { next(e); } },
+  // GET /subscription-plans (public)
+  list: async (req, res, next) => {
+    try {
+      // Public list of active plans, newest first
+      const items = await repo.findMany({ status: 'Active' }, { sort: { updatedAt: -1 } });
+      return res.status(200).json((items || []).map(map));
+    } catch (e) { next(e); }
+  },
 };

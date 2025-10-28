@@ -1,129 +1,136 @@
-const DocumentsRepository = require("../repositories/documents.repository");
-const StorageClient = require("../adapters/storageClient");
-const { env } = require("../config");
-const jobs = require("../jobs");
-const { enqueueDocumentIngestion } = require("../adapters/queue");
+const DocumentsService = require('../services/documents.service');
+const { enqueueDocumentIngestion } = require('../adapters/queue');
+const logger = require('../utils/logger');
 
-const docsRepo = new DocumentsRepository();
-const storage = new StorageClient(env);
-const logger = require("../utils/logger");
+const service = new DocumentsService();
 
-function mapId(doc) {
-  if (!doc) return doc;
-  const { _id, __v, ...rest } = doc;
-  return { id: String(_id || rest.id), ...rest };
-}
-
+/**
+ * DocumentsController - HTTP handlers for /documents endpoints
+ * Handles multipart file upload and document lifecycle
+ */
 module.exports = {
-  // POST /documents (multipart/form-data with file)
+  /**
+   * POST /documents - Upload document to a subject
+   * Multipart form-data: file (required), subjectId (required)
+   */
   create: async (req, res, next) => {
     try {
-      const user = req.user;
+      const userId = req.user.id;
+      const subjectId = req.body.subjectId;
+
+      // Validate file presence (middleware should handle multipart parsing)
       if (!req.file) {
-        return res.status(400).json({ code: "ValidationError", message: "Missing file" });
-      }
-      const allowedExt = [".pdf", ".docx", ".txt"];
-      const ext = req.file.originalname.slice(req.file.originalname.lastIndexOf(".")).toLowerCase();
-      if (!allowedExt.includes(ext)) {
-        return res
-          .status(415)
-          .json({ code: "UnsupportedMediaType", message: "Only .pdf, .docx, .txt allowed" });
-      }
-      const maxBytes = 20 * 1024 * 1024;
-      if (req.file.size > maxBytes) {
-        return res.status(413).json({ code: "PayloadTooLarge", message: "Max file size is 20MB" });
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'No file provided',
+        });
       }
 
-      const uploaded = await storage.upload(req.file);
-      const now = new Date();
-      const toCreate = {
-        subjectId: req.body.subjectId,
-        ownerId: user.id,
-        originalFileName: req.file.originalname,
-        fileType: ext,
-        fileSize: Math.round(req.file.size / (1024 * 1024)),
-        storagePath: uploaded.storagePath,
-        status: "Processing",
-        uploadedAt: now,
-      };
-      const created = await docsRepo.create(toCreate);
+      // Validate subjectId
+      if (!subjectId) {
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'subjectId is required',
+        });
+      }
 
-      // Kick off ingestion + summary chain (prefer queue only when explicitly enabled)
-      const jobPayload = { documentId: String(created._id || created.id) };
-      const useQueue =
-        (process.env.USE_QUEUE === "true" || process.env.USE_QUEUE === "1") &&
-        !!process.env.REDIS_URL;
+      // Upload document via service
+      const document = await service.upload(userId, subjectId, req.file);
+
+      // Trigger background ingestion job
+      const useQueue = process.env.USE_QUEUE === 'true' && !!process.env.REDIS_URL;
+      const jobPayload = { documentId: document.id };
+
       try {
         if (useQueue) {
           await enqueueDocumentIngestion(jobPayload);
-          logger.info({ documentId: jobPayload.documentId }, "[documents] enqueued ingestion");
-          // Watchdog: if queue doesn't pick up within 10s, run inline fallback
-          setTimeout(async () => {
-            try {
-              const latest = await docsRepo.findById(jobPayload.documentId);
-              const noText = !latest?.extractedText || String(latest.extractedText).length === 0;
-              if (latest && latest.status === "Processing" && noText) {
-                logger.warn(
-                  { documentId: jobPayload.documentId },
-                  "[documents] queue not processed in 10s, running inline fallback"
-                );
-                await jobs.documentIngestion(jobPayload);
-              }
-            } catch {}
-          }, 10_000);
+          logger.info({ documentId: document.id }, 'Document ingestion job enqueued');
         } else {
-          // Inline processing for local/dev or when worker is not running
+          // Fallback: inline processing (for dev/local mode)
+          const jobs = require('../jobs');
           setTimeout(() => {
-            jobs.documentIngestion(jobPayload);
-          }, 5);
-          logger.info(
-            { documentId: jobPayload.documentId },
-            "[documents] scheduled inline ingestion"
-          );
+            jobs.documentIngestion(jobPayload).catch((err) => {
+              logger.error({ documentId: document.id, error: err.message }, 'Inline ingestion failed');
+            });
+          }, 100);
+          logger.info({ documentId: document.id }, 'Document ingestion scheduled inline');
         }
-      } catch (e) {
-        // Fallback inline if queue enqueue fails
-        setTimeout(() => {
-          jobs.documentIngestion(jobPayload);
-        }, 5);
-        logger.warn(
-          { documentId: jobPayload.documentId, err: e?.message || e },
-          "[documents] enqueue failed; falling back to inline ingestion"
-        );
+      } catch (err) {
+        logger.warn({ documentId: document.id, error: err.message }, 'Failed to enqueue job, will retry');
       }
 
-      return res.status(201).json(mapId(created));
+      return res.status(201).json(document);
     } catch (e) {
       next(e);
     }
   },
 
-  // GET /documents/:id
+  /**
+   * GET /documents/:id - Get document by ID
+   */
   get: async (req, res, next) => {
     try {
-      const user = req.user;
-      const doc = await docsRepo.findById(req.params.id);
-      if (!doc || String(doc.ownerId) !== String(user.id)) {
-        return res.status(404).json({ code: "NotFound", message: "Document not found" });
-      }
-      return res.status(200).json(mapId(doc));
+      const userId = req.user.id;
+      const documentId = req.params.id;
+
+      const document = await service.getById(userId, documentId);
+      return res.status(200).json(document);
     } catch (e) {
       next(e);
     }
   },
 
-  // GET /documents/:id/summary
+  /**
+   * GET /documents/:id/summary - Get document summary
+   */
   summary: async (req, res, next) => {
     try {
-      const user = req.user;
-      const doc = await docsRepo.findById(req.params.id);
-      if (!doc || String(doc.ownerId) !== String(user.id)) {
-        return res.status(404).json({ code: "NotFound", message: "Document not found" });
+      const userId = req.user.id;
+      const documentId = req.params.id;
+
+      const summary = await service.getSummary(userId, documentId);
+      return res.status(200).json(summary);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * GET /documents?subjectId=xxx - List documents by subject
+   */
+  list: async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+      const subjectId = req.query.subjectId;
+
+      if (!subjectId) {
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'subjectId query parameter is required',
+        });
       }
-      const { summaryShort, summaryFull } = doc;
-      return res
-        .status(200)
-        .json({ summaryShort: summaryShort || null, summaryFull: summaryFull || null });
+
+      const page = Math.max(1, parseInt(req.query.page || '1', 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
+      const sort = req.query.sort || '-uploadedAt';
+
+      const result = await service.listBySubject(userId, subjectId, { page, pageSize, sort });
+      return res.status(200).json(result);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * DELETE /documents/:id - Delete document
+   */
+  remove: async (req, res, next) => {
+    try {
+      const userId = req.user.id;
+      const documentId = req.params.id;
+
+      await service.remove(userId, documentId);
+      return res.status(204).send();
     } catch (e) {
       next(e);
     }

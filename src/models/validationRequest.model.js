@@ -10,8 +10,22 @@ const ValidationRequestSchema = new Schema({
   completionTime: { type: Date },
 }, { timestamps: true, versionKey: false, collection: 'validationRequests' });
 
+// Regular indexes
 ValidationRequestSchema.index({ status: 1, requestTime: -1 });
 ValidationRequestSchema.index({ expertId: 1, status: 1 });
 ValidationRequestSchema.index({ adminId: 1, status: 1 });
+ValidationRequestSchema.index({ learnerId: 1, status: 1 });
+
+// Partial unique index: Only 1 open request per set at a time
+// Prevents duplicate PendingAssignment/Assigned requests for the same setId
+ValidationRequestSchema.index(
+  { setId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: ['PendingAssignment', 'Assigned'] },
+    },
+  }
+);
 
 module.exports = model('ValidationRequest', ValidationRequestSchema);

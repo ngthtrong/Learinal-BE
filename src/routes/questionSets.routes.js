@@ -21,6 +21,7 @@ router.get('/', rateLimit({ limit: 60 }), authenticateJWT, controller.list);
 router.post('/generate', rateLimit({ limit: 30 }), authenticateJWT, idempotencyKey, inputValidation(genSchema), controller.generate);
 router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.get);
 router.patch('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.update);
+router.delete('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.remove);
 router.post('/:id/share', rateLimit({ limit: 30 }), authenticateJWT, controller.share);
 router.post('/:id/review', rateLimit({ limit: 30 }), authenticateJWT, controller.requestReview);
 

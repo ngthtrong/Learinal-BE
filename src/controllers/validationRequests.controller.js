@@ -1,33 +1,122 @@
-const ValidationRequestsRepository = require('../repositories/validationRequests.repository');
+const ValidationRequestsService = require('../services/validationRequests.service');
 
-const repo = new ValidationRequestsRepository();
-function mapId(doc) { if (!doc) return doc; const { _id, __v, ...rest } = doc; return { id: String(_id || rest.id), ...rest }; }
+const service = new ValidationRequestsService();
 
+/**
+ * ValidationRequestsController - HTTP handlers for validation workflow
+ * Delegates business logic to ValidationRequestsService
+ */
 module.exports = {
-  // GET /validation-requests
-  list: async (req, res, next) => {
+  /**
+   * POST /validation-requests
+   * Create validation request (Learner)
+   */
+  createRequest: async (req, res, next) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page || '1', 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      const { items, totalItems, totalPages } = await repo.paginate({}, { page, pageSize, sort: { createdAt: -1 } });
-      res.status(200).json({ items: (items || []).map(mapId), meta: { page, pageSize, total: totalItems, totalPages } });
-    } catch (e) { next(e); }
+      const user = req.user;
+      const { setId } = req.body || {};
+
+      if (!setId) {
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'setId is required',
+        });
+      }
+
+      const request = await service.createRequest(user.id, setId);
+      return res.status(201).json(request);
+    } catch (error) {
+      next(error);
+    }
   },
-  // GET /validation-requests/:id
-  get: async (req, res, next) => {
+
+  /**
+   * POST /validation-requests/:id/assign
+   * Assign expert to validation request (Admin only)
+   */
+  assignExpert: async (req, res, next) => {
     try {
-      const item = await repo.findById(req.params.id);
-      if (!item) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
-      res.status(200).json(mapId(item));
-    } catch (e) { next(e); }
+      const admin = req.user;
+      const requestId = req.params.id;
+      const { expertId } = req.body || {};
+
+      if (!expertId) {
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'expertId is required',
+        });
+      }
+
+      const request = await service.assignExpert(admin.id, requestId, expertId);
+      return res.status(200).json(request);
+    } catch (error) {
+      next(error);
+    }
   },
-  // PATCH /validation-requests/:id
-  update: async (req, res, next) => {
+
+  /**
+   * POST /validation-requests/:id/complete
+   * Complete validation review (Expert only)
+   */
+  completeReview: async (req, res, next) => {
     try {
-      const allowed = {}; if (req.body.status) allowed.status = req.body.status; if (req.body.expertId) allowed.expertId = req.body.expertId;
-      const updated = await repo.updateById(req.params.id, { $set: allowed }, { new: true });
-      if (!updated) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
-      res.status(200).json(mapId(updated));
-    } catch (e) { next(e); }
+      const expert = req.user;
+      const requestId = req.params.id;
+      const { approved, feedback } = req.body || {};
+
+      if (typeof approved !== 'boolean') {
+        return res.status(400).json({
+          code: 'ValidationError',
+          message: 'approved (boolean) is required',
+        });
+      }
+
+      const result = await service.completeReview(expert.id, requestId, {
+        approved,
+        feedback,
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /validation-requests/:id
+   * Get validation request details
+   */
+  getRequest: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const requestId = req.params.id;
+
+      const request = await service.getById(requestId, user);
+      return res.status(200).json(request);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /validation-requests
+   * List validation requests with role-based filtering
+   * Query: page, pageSize, status
+   */
+  listRequests: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const { page, pageSize, status } = req.query;
+
+      const options = {
+        page: parseInt(page, 10) || 1,
+        pageSize: parseInt(pageSize, 10) || 20,
+        status: status || undefined,
+      };
+
+      const { items, meta } = await service.list(user, options);
+      return res.status(200).json({ items, meta });
+    } catch (error) {
+      next(error);
+    }
   },
 };

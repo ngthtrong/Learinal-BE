@@ -28,6 +28,13 @@ class RefreshTokensRepository extends BaseRepository {
     );
   }
 
+  async revokeAllByUserId(userId) {
+    return this.model.updateMany(
+      { userId, revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+  }
+
   async isValid(jti) {
     const doc = await this.model.findOne({ jti }).lean();
     if (!doc) return false;

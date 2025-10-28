@@ -7,6 +7,7 @@ Tham chiếu:
 - SRS: `docs/SRS for Learinal.md`
 - SDD: `docs/SDD_Learinal.md`
 - OpenAPI: `docs/api/learinal-openapi.yaml` (tóm tắt: `docs/api/learinal-openapi-overview.md`)
+ - Kế hoạch triển khai Backend (full): `docs/backend-execution-plan.md`
 
 ---
 

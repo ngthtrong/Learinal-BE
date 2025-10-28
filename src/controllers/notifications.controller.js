@@ -1,26 +1,110 @@
-const NotificationsRepository = require('../repositories/notifications.repository');
-const repo = new NotificationsRepository();
-function mapId(doc) { if (!doc) return doc; const { _id, __v, ...rest } = doc; return { id: String(_id || rest.id), ...rest }; }
+const NotificationsService = require('../services/notifications.service');
 
+const service = new NotificationsService();
+
+/**
+ * NotificationsController - HTTP handlers for notifications endpoints
+ * Delegates business logic to NotificationsService
+ */
 module.exports = {
-  // GET /notifications
+  /**
+   * GET /notifications
+   * List user's notifications with pagination
+   * Query: page, pageSize, isRead
+   */
   list: async (req, res, next) => {
     try {
       const user = req.user;
-      const page = Math.max(1, parseInt(req.query.page || '1', 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      const { items, totalItems, totalPages } = await repo.paginate({ userId: user.id }, { page, pageSize, sort: { createdAt: -1 } });
-      res.status(200).json({ items: (items || []).map(mapId), meta: { page, pageSize, total: totalItems, totalPages } });
-    } catch (e) { next(e); }
+      const { page, pageSize, isRead } = req.query;
+
+      const options = {
+        page: parseInt(page, 10) || 1,
+        pageSize: parseInt(pageSize, 10) || 20,
+        isRead: isRead === 'true' ? true : isRead === 'false' ? false : undefined,
+      };
+
+      const { items, meta, unreadCount } = await service.listByUser(user.id, options);
+      return res.status(200).json({ items, meta, unreadCount });
+    } catch (error) {
+      next(error);
+    }
   },
 
-  // PATCH /notifications/:id (mark as read)
-  update: async (req, res, next) => {
+  /**
+   * GET /notifications/:id
+   * Get notification details
+   */
+  getNotification: async (req, res, next) => {
     try {
       const user = req.user;
-      const updated = await repo.updateById(req.params.id, { $set: { isRead: true } }, { new: true });
-      if (!updated || String(updated.userId) !== String(user.id)) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
-      res.status(200).json(mapId(updated));
-    } catch (e) { next(e); }
+      const notificationId = req.params.id;
+
+      const notification = await service.getById(user.id, notificationId);
+      return res.status(200).json(notification);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * PATCH /notifications/:id
+   * Mark notification as read
+   */
+  markAsRead: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const notificationId = req.params.id;
+
+      const notification = await service.markAsRead(user.id, notificationId);
+      return res.status(200).json(notification);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /notifications/mark-all-read
+   * Mark all notifications as read
+   */
+  markAllAsRead: async (req, res, next) => {
+    try {
+      const user = req.user;
+
+      const result = await service.markAllAsRead(user.id);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /notifications/unread-count
+   * Get unread notifications count
+   */
+  getUnreadCount: async (req, res, next) => {
+    try {
+      const user = req.user;
+
+      const result = await service.getUnreadCount(user.id);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * DELETE /notifications/:id
+   * Delete notification
+   */
+  deleteNotification: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const notificationId = req.params.id;
+
+      await service.deleteNotification(user.id, notificationId);
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
   },
 };
