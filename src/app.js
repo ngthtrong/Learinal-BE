@@ -12,7 +12,16 @@ const app = express();
 // Core middleware
 app.use(requestId);
 app.use(cors());
-app.use(express.json());
+// Capture raw body for webhook signature verification (Stripe/Sepay/etc.)
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      if (buf && buf.length) {
+        req.rawBody = buf.toString('utf8');
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Public health endpoint (no auth required)
