@@ -1,11 +1,11 @@
 const UsersRepository = require("../repositories/users.repository");
 const usersRepo = new UsersRepository();
 
-// Simple in-memory ETag store for stub mode
-const etags = new Map(); // userId -> etag string
+// Simple in-memory ETag version store for stub mode
+const etagVersions = new Map(); // userId -> numeric version
 
-function buildETagFromNow() {
-  return `W/"t${Date.now()}"`;
+function buildETagFromVersion(v) {
+  return `W/"v${v}"`;
 }
 
 module.exports = {
@@ -16,19 +16,27 @@ module.exports = {
       if (!user)
         return res.status(401).json({ code: "Unauthorized", message: "Authentication required" });
 
-      // Try to fetch the real user from DB (so response matches persisted data)
+      // Try to fetch both the normalized DTO and the raw __v in one call
       let dbUser = null;
+      let dbVersion = null;
       try {
-        dbUser = await usersRepo.findByUserId(user.id);
-      } catch {}
-
-      // Provide a synthetic ETag (tied to last seen value in memory)
-      let etag = etags.get(user.id);
-      if (!etag) {
-        etag = buildETagFromNow();
-        etags.set(user.id, etag);
+        const result = await usersRepo.findByUserIdWithVersion(user.id);
+        dbUser = result?.dto ?? null;
+        dbVersion = result?.version ?? null;
+      } catch {
+        // ignore - we'll fall back to in-memory stub version
       }
-      res.setHeader("ETag", etag);
+
+      if (dbVersion !== null) {
+        res.setHeader("ETag", buildETagFromVersion(dbVersion));
+      } else {
+        let version = etagVersions.get(user.id);
+        if (!version) {
+          version = 1;
+          etagVersions.set(user.id, version);
+        }
+        res.setHeader("ETag", buildETagFromVersion(version));
+      }
 
       if (dbUser) {
         return res.status(200).json(dbUser);
@@ -64,24 +72,66 @@ module.exports = {
         });
       }
 
-      const currentEtag = etags.get(user.id) || 'W/"t0"';
-      // In stub mode, we accept any If-None-Match that equals the current stored value
-      if (ifNoneMatch !== currentEtag) {
-        return res.status(412).json({ code: "PreconditionFailed", message: "ETag mismatch" });
+      const currentVersion = etagVersions.get(user.id) || 0;
+      // DB-aware ETag handling: fetch DTO+version once and check expected ETag.
+      let usingDb = false;
+      let expectedVersion;
+      try {
+        const r = await usersRepo.findByUserIdWithVersion(user.id);
+        if (r && r.version !== null) {
+          usingDb = true;
+          expectedVersion = r.version;
+          const expectedEtag = buildETagFromVersion(expectedVersion);
+          if (ifNoneMatch !== expectedEtag) {
+            return res.status(412).json({ code: "PreconditionFailed", message: "ETag mismatch" });
+          }
+        }
+      } catch {
+        // ignore and fall back to in-memory
+      }
+
+      if (!usingDb) {
+        const currentEtag = buildETagFromVersion(currentVersion);
+        if (ifNoneMatch !== currentEtag) {
+          return res.status(412).json({ code: "PreconditionFailed", message: "ETag mismatch" });
+        }
       }
 
       // Apply allowed updates (only fullName for now)
       const { fullName } = req.body || {};
 
       let nextUser;
-      try {
-        // Persist to DB when possible
-        const updated = await usersRepo.updateUserById(user.id, { fullName });
-        if (updated) {
-          nextUser = updated;
+      // If we detected a DB user above, attempt a versioned update using the
+      // optimistic-concurrency helper. If the update fails due to version
+      // mismatch, return 412.
+      if (usingDb) {
+        try {
+          const updated = await usersRepo.updateByIdWithVersion(
+            user.id,
+            { $set: { fullName } },
+            expectedVersion
+          );
+          if (!updated || !updated.dto) {
+            return res
+              .status(412)
+              .json({
+                code: "PreconditionFailed",
+                message: "ETag mismatch or concurrent modification",
+              });
+          }
+          // Use the returned normalized DTO and version from the update call
+          nextUser = updated.dto;
+          const newV = updated.version;
+          if (typeof newV === "number") {
+            res.setHeader("ETag", buildETagFromVersion(newV));
+          }
+          return res.status(200).json(nextUser);
+        } catch {
+          // fall back to stub behavior below
         }
-      } catch {}
+      }
 
+      // Fallback (stub) update when no DB or DB update failed: update in-memory
       if (!nextUser) {
         nextUser = {
           id: user.id,
@@ -94,8 +144,10 @@ module.exports = {
         };
       }
 
-      const newEtag = buildETagFromNow();
-      etags.set(user.id, newEtag);
+      const prev = etagVersions.get(user.id) || 0;
+      const newVersion = prev + 1;
+      etagVersions.set(user.id, newVersion);
+      const newEtag = buildETagFromVersion(newVersion);
       res.setHeader("ETag", newEtag);
       return res.status(200).json(nextUser);
     } catch (e) {

@@ -48,22 +48,56 @@ class UsersRepository extends BaseRepository {
 
   async updateByIdWithVersion(id, update, expectedVersion, options = {}) {
     const filter = { _id: id };
+
+    // Build update payload: if caller provided operators (e.g. $set), keep them,
+    // otherwise wrap into $set so we can safely merge $inc below.
+    const hasOperator = Object.keys(update || {}).some((k) => k.startsWith("$"));
+    const updatePayload = hasOperator ? { ...update } : { $set: update };
+
+    // If an expectedVersion is provided, require it in the filter and atomically
+    // increment __v in the same update to implement optimistic concurrency.
     if (Number.isInteger(expectedVersion)) {
       filter.__v = expectedVersion;
+      // Merge or add $inc: { __v: 1 }
+      if (!updatePayload.$inc) updatePayload.$inc = { __v: 1 };
+      else updatePayload.$inc = { ...updatePayload.$inc, __v: (updatePayload.$inc.__v || 0) + 1 };
     }
-    return this.model
-      .findOneAndUpdate(filter, update, {
+
+    const doc = await this.model
+      .findOneAndUpdate(filter, updatePayload, {
         new: true,
         runValidators: true,
         ...options,
       })
       .lean();
+
+    if (!doc) return { dto: null, version: null };
+
+    const dto = normalizeUser(doc);
+    const version = Number.isInteger(doc.__v) ? doc.__v : null;
+    return { dto, version };
   }
 
   async findByUserId(userId, options = {}) {
     const { projection = null, includeSensitive = false } = options;
     const doc = await this.model.findById(userId, projection).lean();
     return normalizeUser(doc, { includeSensitive });
+  }
+
+  /**
+   * Fetch normalized DTO and the raw __v version number in a single query.
+   * Returns an object: { dto, version } where dto is the normalized user or null,
+   * and version is the numeric __v from Mongo or null when not present.
+   */
+  async findByUserIdWithVersion(userId, options = {}) {
+    const { projection = null, includeSensitive = false } = options;
+    // Include __v in the projection so we can read the raw version alongside the doc
+    const selectProjection = projection ? { ...projection } : null;
+    const doc = await this.model.findById(userId, selectProjection).lean();
+    if (!doc) return { dto: null, version: null };
+    const dto = normalizeUser(doc, { includeSensitive });
+    const version = Number.isInteger(doc.__v) ? doc.__v : null;
+    return { dto, version };
   }
 
   async findByEmail(email, options = {}) {
