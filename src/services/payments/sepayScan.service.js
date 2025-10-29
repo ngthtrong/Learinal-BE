@@ -36,12 +36,14 @@ class SepayScanService {
       const currency = "VND"; // Sepay userapi amounts are VND by context
       const content = String(tx?.transaction_content || "");
       if (amountIn !== 2000) continue;
+      // Check for both SEVQR prefix and standard keyword
+      if (!/SEVQR/i.test(content)) continue;
       if (!/\bstandard\b/i.test(content)) continue;
       const userId = extractUserId(content);
       if (!userId) continue;
       matched++;
       const curr = await this.usersRepository.findByUserId(userId);
-      if (curr && curr.subscriptionStatus !== "Active") {
+      if (curr && curr.subscriptionStatus === "None") {
         await this.usersRepository.updateUserById(userId, { subscriptionStatus: "Active" });
         updated++;
         details.push({ userId, txId: tx.id, amountIn, content, action: "activated" });

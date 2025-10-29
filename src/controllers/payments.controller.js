@@ -23,7 +23,7 @@ module.exports = {
 
       // Simple approach: build qr.sepay.vn URL using env configs (preferred)
       // des will include plan + uid to allow matching on webhook side
-      const description = `standard uid:${userId}`;
+      const description = `SEVQR standard uid:${userId}`;
 
       let qrUrl;
       if (sepay?.qrAccount && sepay?.qrBank) {

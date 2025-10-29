@@ -1,6 +1,7 @@
 const { UsersRepository } = require("../repositories");
 const crypto = require("crypto");
 const { sepay } = require("../config");
+const createSepayClient = require("../adapters/sepayClient");
 
 const usersRepo = new UsersRepository();
 
@@ -19,9 +20,8 @@ module.exports = {
     }
   },
 
-  // Minimal Sepay webhook handler: expects JSON body with keys { amount, currency, content, reference, status }
-  // On successful payment (amount=2000, currency=VND, content='standard'),
-  // parses userId from reference and activates the user's subscriptionStatus.
+  // Sepay webhook handler: when Sepay sends notification, fetch recent transactions and activate matching users
+  // Instead of relying on webhook payload, we query Sepay API for last 20 transactions and match criteria.
   sepay: async (req, res, next) => {
     try {
       // Optional signature verification if SEPAY_WEBHOOK_SECRET is configured
@@ -48,41 +48,55 @@ module.exports = {
         }
       }
 
-  const evt = req.body || {};
-  const amount = Number(evt.amount);
-  const currency = String(evt.currency || "").toUpperCase();
-  const description = String(evt.description || evt.content || "");
-  const reference = String(evt.reference || evt.ref || evt.note || description || "");
-  const status = String(evt.status || evt.event || "").toLowerCase();
+      // Fetch last 20 transactions from Sepay API
+      const client = createSepayClient(sepay);
+      const params = {
+        account_number: sepay.qrAccount,
+        limit: 20,
+      };
+      
+      const data = await client.listTransactions(params);
+      const transactions = Array.isArray(data?.transactions) ? data.transactions : [];
 
-      // Basic validation
-      if (!(amount > 0) || !currency || !reference) {
-        return res.status(400).json({ error: "invalid payload" });
+      let matched = 0;
+      let updated = 0;
+      const results = [];
+
+      // Process each transaction
+      for (const tx of transactions) {
+        const amountIn = Number(tx?.amount_in || 0);
+        const content = String(tx?.transaction_content || "");
+
+        // Check if transaction matches criteria
+        if (amountIn !== 2000) continue;
+        if (!/SEVQR/i.test(content)) continue;
+        if (!/\bstandard\b/i.test(content)) continue;
+
+        const userId = extractUserIdFromText(content);
+        if (!userId) continue;
+
+        matched++;
+
+        // Check and update user
+        const current = await usersRepo.findByUserId(userId);
+        if (current && current.subscriptionStatus === "None") {
+          await usersRepo.updateUserById(userId, { subscriptionStatus: "Active" });
+          updated++;
+          results.push({ userId, txId: tx.id, action: "activated" });
+        } else if (current) {
+          results.push({ userId, txId: tx.id, action: "already_active_or_not_none" });
+        } else {
+          results.push({ userId, txId: tx.id, action: "user_not_found" });
+        }
       }
 
-      // We only accept exact Standard plan @ 2000 VND and a success-like status
-      const okStatus = ["success", "succeeded", "completed", "paid"].includes(status);
-      const hasStandard = /\bstandard\b/i.test(description) || /\bstandard\b/i.test(reference);
-      if (amount !== 2000 || currency !== "VND" || !hasStandard || !okStatus) {
-        return res.status(200).json({ ok: true, ignored: true });
-      }
-
-      const userId = extractUserIdFromText(reference) || extractUserIdFromText(description);
-      if (!userId) {
-        return res.status(400).json({ error: "missing userId in reference" });
-      }
-
-      // Update only if current status is 'None'
-      const current = await usersRepo.findByUserId(userId);
-      if (!current) {
-        return res.status(404).json({ code: "NotFound", message: "User not found" });
-      }
-      if (current.subscriptionStatus !== "Active") {
-        await usersRepo.updateUserById(userId, { subscriptionStatus: "Active" });
-        return res.status(200).json({ ok: true, userId, updated: true });
-      }
-
-      return res.status(200).json({ ok: true, userId, updated: false });
+      return res.status(200).json({ 
+        ok: true, 
+        processed: transactions.length,
+        matched, 
+        updated,
+        results 
+      });
     } catch (e) {
       return next(e);
     }
