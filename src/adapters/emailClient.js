@@ -1,5 +1,4 @@
 const sgMail = require("@sendgrid/mail");
-const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 
 class EmailClient {
   constructor(config) {
@@ -10,7 +9,16 @@ class EmailClient {
       sgMail.setApiKey(this.config.sendgridApiKey);
     }
     if (this.provider === "ses" && this.config.sesRegion) {
-      this.ses = new SESClient({ region: this.config.sesRegion });
+      // Lazy-load AWS SES only if chosen, so project can run without the package installed
+      try {
+        // eslint-disable-next-line global-require
+        const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+        this.SESClient = SESClient;
+        this.SendEmailCommand = SendEmailCommand;
+        this.ses = new SESClient({ region: this.config.sesRegion });
+      } catch (err) {
+        this.sesInitError = err;
+      }
     }
   }
 
@@ -21,11 +29,7 @@ class EmailClient {
     return `
       <div>
         <p>Hello ${safe(fullName) || "there"},</p>
-        ${
-          link
-            ? `<p>Please click: <a href="${safe(link)}">${safe(link)}</a></p>`
-            : ""
-        }
+        ${link ? `<p>Please click: <a href="${safe(link)}">${safe(link)}</a></p>` : ""}
         ${message ? `<p>${safe(message)}</p>` : ""}
         <p>Regards,<br/>Learinal</p>
       </div>
@@ -51,9 +55,27 @@ class EmailClient {
       return true;
     }
 
-    if (this.provider === "ses" && this.ses) {
+    if (this.provider === "ses") {
+      if (this.sesInitError) {
+        throw new Error(
+          "SES email provider selected but @aws-sdk/client-ses is not installed. Install it or switch EMAIL_PROVIDER=sendgrid."
+        );
+      }
+      if (!this.ses || !this.SendEmailCommand) {
+        // Defensive: try to init again in case constructor path was skipped
+        try {
+          const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+          this.SESClient = this.SESClient || SESClient;
+          this.SendEmailCommand = this.SendEmailCommand || SendEmailCommand;
+          this.ses = this.ses || new SESClient({ region: this.config.sesRegion });
+        } catch (err) {
+          throw new Error(
+            "SES email provider selected but @aws-sdk/client-ses is not available. Install it or switch provider."
+          );
+        }
+      }
       const html = this.buildHtml(templateId, variables);
-      const cmd = new SendEmailCommand({
+      const cmd = new this.SendEmailCommand({
         Destination: { ToAddresses: Array.isArray(to) ? to : [to] },
         Message: {
           Body: { Html: { Charset: "UTF-8", Data: html } },

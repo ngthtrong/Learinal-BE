@@ -54,6 +54,10 @@ const UserSchema = new Schema(
       type: Date,
       default: null,
     },
+    // OAuth identity mapping (optional)
+    provider: { type: String, default: null, index: true },
+    providerSub: { type: String, default: null, index: true },
+    providerEmail: { type: String, default: null },
   },
   {
     collection: "users",
@@ -118,5 +122,13 @@ UserSchema.set("toObject", {
 
 UserSchema.index({ role: 1, status: 1, email: 1 });
 UserSchema.index({ subscriptionPlanId: 1, subscriptionStatus: 1 });
+// Ensure uniqueness when provider identity is present
+UserSchema.index(
+  { provider: 1, providerSub: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { provider: { $type: "string" }, providerSub: { $type: "string" } },
+  }
+);
 
 module.exports = model("User", UserSchema);

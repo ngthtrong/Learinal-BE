@@ -116,6 +116,13 @@ class UsersRepository extends BaseRepository {
     return normalizeUser(doc, { includeSensitive });
   }
 
+  async findByProviderSub(provider, sub, options = {}) {
+    if (!provider || !sub) return null;
+    const { projection = null, includeSensitive = false } = options;
+    const doc = await this.model.findOne({ provider, providerSub: sub }, projection).lean();
+    return normalizeUser(doc, { includeSensitive });
+  }
+
   async isEmailTaken(email, excludeUserId) {
     if (!email || typeof email !== "string") {
       return false;

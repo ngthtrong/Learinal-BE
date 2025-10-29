@@ -20,11 +20,9 @@ const env = {
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
 
   // Email verification / password reset tokens
-  emailVerifySecret:
-    process.env.EMAIL_VERIFY_SECRET || "change-me-email-verify",
+  emailVerifySecret: process.env.EMAIL_VERIFY_SECRET || "change-me-email-verify",
   emailVerifyExpiresIn: process.env.EMAIL_VERIFY_EXPIRES_IN || "1d",
-  passwordResetSecret:
-    process.env.PASSWORD_RESET_SECRET || "change-me-password-reset",
+  passwordResetSecret: process.env.PASSWORD_RESET_SECRET || "change-me-password-reset",
   passwordResetExpiresIn: process.env.PASSWORD_RESET_EXPIRES_IN || "1h",
 
   // App base URL for building links in emails (frontend)
@@ -32,8 +30,22 @@ const env = {
 
   // Auth policy toggles
   requireEmailVerifiedForLogin:
-    (process.env.REQUIRE_EMAIL_VERIFIED_FOR_LOGIN || "false").toLowerCase() ===
-    "true",
+    (process.env.REQUIRE_EMAIL_VERIFIED_FOR_LOGIN || "false").toLowerCase() === "true",
+
+  // OAuth hardening
+  oauthRequireState: (process.env.OAUTH_REQUIRE_STATE || "true").toLowerCase() === "true",
+  oauthRequirePkce: (process.env.OAUTH_REQUIRE_PKCE || "false").toLowerCase() === "true",
+
+  // Cookies for auth (when using cookie-based refresh)
+  cookieDomain: process.env.COOKIE_DOMAIN || "",
+  cookieSecure:
+    (
+      process.env.COOKIE_SECURE || (process.env.NODE_ENV === "production" ? "true" : "false")
+    ).toLowerCase() === "true",
+  cookieSameSite: process.env.COOKIE_SAMESITE || "Lax",
+
+  // CORS
+  corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS || "",
 
   // External services
   sendgridApiKey: process.env.SENDGRID_API_KEY || "",
