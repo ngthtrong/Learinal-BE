@@ -361,7 +361,7 @@ module.exports = {
       if (tokens?.id_token) {
         try {
           await verifyGoogleIdToken(tokens.id_token, env.googleClientId);
-        } catch (e) {
+        } catch {
           return res.status(401).json({ code: "Unauthorized", message: "Invalid id_token" });
         }
       }
@@ -383,8 +383,9 @@ module.exports = {
         user = await usersRepo.findByEmail(normalizedEmail);
       }
       if (!user) {
-        // If provider reports email_verified, activate immediately; otherwise keep PendingActivation
-        const isVerified = Boolean(profile.email_verified ?? true);
+        // Production-hardening: only treat as verified when provider explicitly reports true
+        // Default to PendingActivation if the claim is missing or false
+        const isVerified = profile.email_verified === true;
         user = await usersRepo.createUser({
           fullName: profile.name || normalizedEmail,
           email: normalizedEmail,

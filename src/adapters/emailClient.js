@@ -11,7 +11,6 @@ class EmailClient {
     if (this.provider === "ses" && this.config.sesRegion) {
       // Lazy-load AWS SES only if chosen, so project can run without the package installed
       try {
-        // eslint-disable-next-line global-require
         const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
         this.SESClient = SESClient;
         this.SendEmailCommand = SendEmailCommand;
@@ -68,7 +67,7 @@ class EmailClient {
           this.SESClient = this.SESClient || SESClient;
           this.SendEmailCommand = this.SendEmailCommand || SendEmailCommand;
           this.ses = this.ses || new SESClient({ region: this.config.sesRegion });
-        } catch (err) {
+        } catch {
           throw new Error(
             "SES email provider selected but @aws-sdk/client-ses is not available. Install it or switch provider."
           );
