@@ -21,13 +21,7 @@ Lưu ý: Phiên bản 0.1 hướng đến sản phẩm Web (không có mobile ap
 
 #### 3.1.2. Phụ thuộc ngoài (External Dependencies)
 
-| Tên                             | Mục đích                                                       | Loại giao diện            | Có thể thay thế             |
-| -------------------------------- | ----------------------------------------------------------------- | --------------------------- | ------------------------------ |
-| Google Gemini API                | Phân tích tài liệu, tạo tóm tắt, mục lục, sinh câu hỏi | REST/HTTPS, OAuth Key/Token | OpenAI, Claude, Vertex AI PaLM |
-| Email Service (SendGrid/SES)     | Gửi email hệ thống (xác thực, thông báo)                   | REST API hoặc SMTP/TLS     | Mailgun, Postmark              |
-| Object Storage (S3/Cloudinary)   | Lưu trữ tệp tài liệu và dữ liệu tạm                      | REST/HTTPS, SDK             | GCS, Azure Blob                |
-| Identity Provider (Google OAuth) | Đăng nhập/SSO                                                  | OAuth 2.0 + OIDC            | GitHub, Microsoft, Auth0       |
-| Cổng Thanh toán (Stripe)       | Thanh toán gói dịch vụ (nếu kích hoạt)                     | REST/HTTPS + Webhook        | PayPal, MoMo, VNPay            |
+* [ ] TênMục đíchLoại giao diệnCó thể thay thếGoogle Gemini APIPhân tích tài liệu, tạo tóm tắt, mục lục, sinh câu hỏiREST/HTTPS, OAuth Key/TokenOpenAI, Claude, Vertex AI PaLMEmail Service (SendGrid/SES)Gửi email hệ thống (xác thực, thông báo)REST API hoặc SMTP/TLSMailgun, PostmarkObject Storage (S3/Cloudinary)Lưu trữ tệp tài liệu và dữ liệu tạmREST/HTTPS, SDKGCS, Azure BlobIdentity Provider (Google OAuth)Đăng nhập/SSOOAuth 2.0 + OIDCGitHub, Microsoft, Auth0Cổng Thanh toán (SePay)Thanh toán gói dịch vụ (nếu kích hoạt)REST/HTTPS + WebhookPayPal, MoMo, VNPay
 
 #### 3.1.3. Giả định và Ràng buộc thiết kế
 
@@ -57,7 +51,7 @@ Lưu ý: Phiên bản 0.1 hướng đến sản phẩm Web (không có mobile ap
      - Kích hoạt: Tiêu thụ sự kiện từ Message Queue.
   4. Database (MongoDB)
      - Vai trò: Lưu dữ liệu người dùng, tài liệu, bộ câu hỏi, bài làm, quy trình duyệt, đăng ký gói.
-  5. Message Queue (Redis/RabbitMQ)
+  5. Message Queue (Redis)
      - Vai trò: Kết dính các tác vụ nền (publish/subscribe sự kiện hệ thống).
 
 ---
@@ -138,6 +132,7 @@ Lưu ý DIP: Tất cả “Service” phụ thuộc vào Interface thay vì cài
   5) Expert Worker (độc lập) sẽ nhận sự kiện, cập nhật trạng thái và phản hồi về sau (ngoài phạm vi sơ đồ này).
 
 Hợp đồng API mẫu – Create Question Set
+
 - Input: `documentId`, `topics[]`, `difficulty`, `numQuestions`
 - Output: `{ setId, status }`
 - Lỗi: 400 (input không hợp lệ), 401/403 (chưa đăng nhập/không đủ quyền), 404 (documentId không tồn tại), 429 (rate limit), 502 (LLM upstream), 503 (queue full)
@@ -145,6 +140,7 @@ Hợp đồng API mẫu – Create Question Set
 ---
 
 Tham chiếu API chi tiết
+
 - OpenAPI: `docs/api/learinal-openapi.yaml` (OpenAPI 3.1 – đầy đủ endpoint/schemas).
 - Hướng dẫn backend: `docs/api/README.md` (quy ước, hạn mức, tích hợp dịch vụ ngoài).
 
