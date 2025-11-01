@@ -44,7 +44,16 @@ const allowed = (env.corsAllowedOrigins || "")
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin || allowed.length === 0) return cb(null, true);
+      // Allow non-browser or same-origin requests that don't send Origin
+      if (!origin) return cb(null, true);
+      // In production, an empty allowlist must not default-allow all
+      if (allowed.length === 0) {
+        if (env.nodeEnv === "production") {
+          return cb(new Error("CORS not allowed: empty allowlist in production"), false);
+        }
+        // In non-production, allow all for convenience
+        return cb(null, true);
+      }
       if (allowed.includes(origin)) return cb(null, true);
       return cb(new Error("CORS not allowed for this origin"), false);
     },
@@ -64,16 +73,18 @@ app.get("/reset-password", (req, res) => {
   res.sendFile(path.join(publicDir, "reset-password.html"));
 });
 
-// Serve simple OAuth testing pages
-app.get("/oauth", (req, res) => {
-  res.sendFile(path.join(publicDir, "oauth.html"));
-});
+// Serve simple OAuth testing pages only outside production
+if (env.nodeEnv !== "production") {
+  app.get("/oauth", (req, res) => {
+    res.sendFile(path.join(publicDir, "oauth.html"));
+  });
 
-// Google will redirect to this path with ?code=...
-// Ensure GOOGLE_REDIRECT_URI matches http://localhost:<PORT>/oauth/google/callback for local testing
-app.get("/oauth/google/callback", (req, res) => {
-  res.sendFile(path.join(publicDir, "oauth-callback.html"));
-});
+  // Google will redirect to this path with ?code=...
+  // Ensure GOOGLE_REDIRECT_URI matches http://localhost:<PORT>/oauth/google/callback for local testing
+  app.get("/oauth/google/callback", (req, res) => {
+    res.sendFile(path.join(publicDir, "oauth-callback.html"));
+  });
+}
 
 // Base URL: /api/v1
 app.use("/api/v1", routes);

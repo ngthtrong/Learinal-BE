@@ -18,6 +18,9 @@ const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "1h",
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "change-me-refresh",
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+  jwtAlgorithm: (process.env.JWT_ALGORITHM || "HS256").toUpperCase(),
+  jwtIssuer: process.env.JWT_ISSUER || "",
+  jwtAudience: process.env.JWT_AUDIENCE || "",
 
   // Email verification / password reset tokens
   emailVerifySecret: process.env.EMAIL_VERIFY_SECRET || "change-me-email-verify",

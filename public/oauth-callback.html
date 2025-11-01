@@ -185,15 +185,11 @@
       }
 
       async function refresh() {
-        if (!refreshToken) {
-          show("Chưa có refreshToken");
-          return;
-        }
         try {
           const res = await fetch("/api/v1/auth/refresh", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken }),
+            headers: { "X-Requested-By": "web" },
+            // Cookie-based refresh: no request body needed
           });
           const data = await res.json();
           if (!res.ok) {

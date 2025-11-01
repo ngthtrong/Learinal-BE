@@ -21,14 +21,22 @@ function buildRealTokens(user, { jti } = {}) {
     role: user.role || "Learner",
     status: user.status || "Active",
   };
-  const accessToken = jwt.sign(payload, env.jwtSecret, {
+  const accessTokenOpts = {
     expiresIn: env.jwtExpiresIn,
-  });
+    algorithm: env.jwtAlgorithm || "HS256",
+  };
+  if (env.jwtIssuer) accessTokenOpts.issuer = env.jwtIssuer;
+  if (env.jwtAudience) accessTokenOpts.audience = env.jwtAudience;
+  const accessToken = jwt.sign(payload, env.jwtSecret, accessTokenOpts);
   const refreshClaims = { sub: user.id, type: "refresh" };
   if (jti) refreshClaims.jti = jti;
-  const refreshToken = jwt.sign(refreshClaims, env.jwtRefreshSecret, {
+  const refreshTokenOpts = {
     expiresIn: env.jwtRefreshExpiresIn,
-  });
+    algorithm: env.jwtAlgorithm || "HS256",
+  };
+  if (env.jwtIssuer) refreshTokenOpts.issuer = env.jwtIssuer;
+  if (env.jwtAudience) refreshTokenOpts.audience = env.jwtAudience;
+  const refreshToken = jwt.sign(refreshClaims, env.jwtRefreshSecret, refreshTokenOpts);
   return {
     accessToken,
     refreshToken,
@@ -64,6 +72,8 @@ function setRefreshCookie(res, refreshToken) {
       httpOnly: true,
       sameSite: env.cookieSameSite || "Lax",
       secure: !!env.cookieSecure,
+      // Limit cookie to API routes; adjust if your FE expects a different scope
+      path: "/api/v1",
     };
     if (env.cookieDomain) opts.domain = env.cookieDomain;
     // Set expiry based on token exp if available
@@ -72,6 +82,16 @@ function setRefreshCookie(res, refreshToken) {
       opts.expires = new Date(decoded.exp * 1000);
     }
     res.cookie("rt", refreshToken, opts);
+    // Best-effort: clear any legacy root-path cookie to avoid duplicates
+    try {
+      res.clearCookie("rt", {
+        httpOnly: true,
+        sameSite: env.cookieSameSite || "Lax",
+        secure: !!env.cookieSecure,
+        domain: env.cookieDomain || undefined,
+        path: "/",
+      });
+    } catch {}
   } catch {}
 }
 
@@ -333,7 +353,11 @@ module.exports = {
       const { hashedPassword: _omit, ...safeUser } = userWithSensitive;
       // Local auth must always issue REAL tokens (no stub)
       const tokens = await issueTokens("real", safeUser, { req });
-      return res.status(200).json(tokens);
+      // Ensure refresh token cookie is set for cookie-only refresh flow
+      setRefreshCookie(res, tokens.refreshToken);
+      // Do not expose refreshToken in response body (cookie-only)
+      const { refreshToken: _omitRt1, ...loginResp } = tokens;
+      return res.status(200).json(loginResp);
     } catch (err) {
       next(err);
     }
@@ -407,7 +431,27 @@ module.exports = {
       const body = await issueTokens("real", user, { req });
       // Set refresh token cookie for improved security
       setRefreshCookie(res, body.refreshToken);
-      return res.status(200).json(body);
+      // Do not expose refreshToken in response body (cookie-only)
+      const { refreshToken: _omitRt2, ...exchangeResp } = body;
+      // Clear one-time OAuth state cookie after successful exchange
+      try {
+        res.clearCookie("oauth_state", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/api/v1/auth",
+        });
+        // Also clear any legacy root-path oauth_state cookie
+        res.clearCookie("oauth_state", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/",
+        });
+      } catch {}
+      return res.status(200).json(exchangeResp);
     } catch (err) {
       next(err);
     }
@@ -416,15 +460,25 @@ module.exports = {
   // POST /auth/refresh
   refresh: async (req, res, next) => {
     try {
-      const bodyToken = req.body?.refreshToken;
-      const cookieToken = req.cookies?.rt;
-      const refreshToken = bodyToken || cookieToken;
+      // Enforce cookie-only refresh and require a custom header to mitigate CSRF form-post
+      const requestedBy = req.get("x-requested-by");
+      if (!requestedBy) {
+        return res
+          .status(403)
+          .json({ code: "Forbidden", message: "Missing X-Requested-By header" });
+      }
+      const refreshToken = req.cookies?.rt;
       if (!refreshToken) {
         return res.status(400).json({ code: "ValidationError", message: "Missing refreshToken" });
       }
       let decoded;
       try {
-        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret);
+        const verifyOpts = {
+          algorithms: [env.jwtAlgorithm || "HS256"],
+        };
+        if (env.jwtIssuer) verifyOpts.issuer = env.jwtIssuer;
+        if (env.jwtAudience) verifyOpts.audience = env.jwtAudience;
+        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret, verifyOpts);
       } catch {
         return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
       }
@@ -432,24 +486,33 @@ module.exports = {
       const jti = decoded.jti;
 
       if (jti) {
-        const valid = await refreshRepo.isValid(jti);
-        if (!valid) {
+        // Stronger validation: ensure the token exists, not revoked/expired, and belongs to the same user
+        const rec = await refreshRepo.findByJti(jti);
+        const now = Date.now();
+        const belongsToUser = rec?.userId && String(rec.userId) === String(sub);
+        const notRevoked = !rec?.revokedAt;
+        const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
+        if (!rec || !belongsToUser || !notRevoked || !notExpired) {
           return res.status(401).json({
             code: "Unauthorized",
-            message: "Refresh token expired or revoked",
+            message: "Refresh token expired, revoked, or invalid",
           });
         }
         await refreshRepo.revokeByJti(jti);
         const user = await usersRepo.findByUserId(sub);
         const body = await issueTokens("real", user, { req });
         setRefreshCookie(res, body.refreshToken);
-        return res.status(200).json(body);
+        const { refreshToken: _omitRt3, ...refreshResp } = body;
+        return res.status(200).json(refreshResp);
       }
 
       // Legacy: if no jti (older JWT style), just issue new access token
       const payload = { sub, role: "Learner" };
       const accessToken = jwt.sign(payload, env.jwtSecret, {
         expiresIn: env.jwtExpiresIn,
+        algorithm: env.jwtAlgorithm || "HS256",
+        ...(env.jwtIssuer ? { issuer: env.jwtIssuer } : {}),
+        ...(env.jwtAudience ? { audience: env.jwtAudience } : {}),
       });
       return res.status(200).json({ accessToken, tokenType: "Bearer", expiresIn: 3600 });
     } catch (err) {
@@ -475,6 +538,15 @@ module.exports = {
           sameSite: env.cookieSameSite || "Lax",
           secure: !!env.cookieSecure,
           domain: env.cookieDomain || undefined,
+          path: "/api/v1",
+        });
+        // Also clear legacy root-path cookie if present
+        res.clearCookie("rt", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/",
         });
       } catch {}
       return res.status(204).send();

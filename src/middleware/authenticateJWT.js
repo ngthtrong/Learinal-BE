@@ -9,7 +9,12 @@ function authenticateJWT(req, res, next) {
   }
   const token = authz.substring("Bearer ".length);
   try {
-    const payload = jwt.verify(token, env.jwtSecret);
+    const verifyOpts = {
+      algorithms: [env.jwtAlgorithm || "HS256"],
+    };
+    if (env.jwtIssuer) verifyOpts.issuer = env.jwtIssuer;
+    if (env.jwtAudience) verifyOpts.audience = env.jwtAudience;
+    const payload = jwt.verify(token, env.jwtSecret, verifyOpts);
     req.user = {
       id: payload.sub,
       role: payload.role,

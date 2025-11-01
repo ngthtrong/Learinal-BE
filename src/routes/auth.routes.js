@@ -33,9 +33,21 @@ router.get("/state", rateLimit({ limit: 120 }), (req, res) => {
     httpOnly: true,
     sameSite: env.cookieSameSite || "Lax",
     secure: !!env.cookieSecure,
+    // Explicit path ensures we can clear this cookie reliably after exchange
+    path: "/api/v1/auth",
     maxAge: 5 * 60 * 1000, // 5 minutes
   };
   if (env.cookieDomain) cookieOpts.domain = env.cookieDomain;
+  // Best-effort: clear any legacy root-path cookie to avoid duplicates
+  try {
+    res.clearCookie("oauth_state", {
+      httpOnly: true,
+      sameSite: env.cookieSameSite || "Lax",
+      secure: !!env.cookieSecure,
+      domain: env.cookieDomain || undefined,
+      path: "/",
+    });
+  } catch {}
   res.cookie("oauth_state", state, cookieOpts);
   return res.status(200).json({ state, ttlMs: cookieOpts.maxAge });
 });
