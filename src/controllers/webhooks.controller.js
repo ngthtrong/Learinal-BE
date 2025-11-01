@@ -7,7 +7,9 @@ const usersRepo = new UsersRepository();
 
 function extractUserIdFromText(text) {
   if (!text || typeof text !== "string") return null;
-  const m = text.match(/uid:([a-f0-9]{24})/i);
+  // Match both "uid:xxxxx" (with colon) and "uidxxxxx" (without colon)
+  // Banks may strip special characters from QR content
+  const m = text.match(/uid:?([a-f0-9]{24})/i);
   return m ? m[1].toLowerCase() : null;
 }
 
