@@ -9,11 +9,16 @@
     { "key": "baseUrl", "value": "http://localhost:3001/api/v1" },
     { "key": "auth", "value": "Bearer stub:demo-user:Learner" },
     { "key": "adminAuth", "value": "Bearer stub:admin-1:Admin" },
+    { "key": "expertAuth", "value": "Bearer stub:expert-1:Expert" },
     { "key": "subjectId", "value": "" },
     { "key": "questionSetId", "value": "" },
     { "key": "quizAttemptId", "value": "" },
     { "key": "documentId", "value": "" },
-    { "key": "etag_me", "value": "" }
+    { "key": "etag_me", "value": "" },
+    { "key": "subscriptionPlanId", "value": "" },
+    { "key": "userSubscriptionId", "value": "" },
+    { "key": "validationRequestId", "value": "" },
+    { "key": "commissionRecordId", "value": "" }
   ],
   "item": [
     {
@@ -223,11 +228,205 @@
       ]
     },
     {
+      "name": "Subscription Plans",
+      "item": [
+        {
+          "name": "GET /subscription-plans (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/subscription-plans", "host": ["{{baseUrl}}"], "path": ["subscription-plans"] }
+          }
+        },
+        {
+          "name": "POST /subscription-plans (Admin)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.data && json.data.plan && json.data.plan.id) {",
+            "  pm.collectionVariables.set('subscriptionPlanId', json.data.plan.id);",
+            "}"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "{{adminAuth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planName\": \"Test Plan\",\n  \"description\": \"For testing\",\n  \"billingCycle\": \"Monthly\",\n  \"price\": 3000,\n  \"entitlements\": {\n    \"maxMonthlyTestGenerations\": 20,\n    \"maxValidationRequests\": 10,\n    \"priorityProcessing\": false,\n    \"shareLimits\": { \"canShare\": true, \"maxSharedUsers\": 5 },\n    \"maxSubjects\": 10\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/subscription-plans", "host": ["{{baseUrl}}"], "path": ["subscription-plans"] }
+          }
+        },
+        {
+          "name": "GET /subscription-plans/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}", "host": ["{{baseUrl}}"], "path": ["subscription-plans", "{{subscriptionPlanId}}"] }
+          }
+        },
+        {
+          "name": "PATCH /subscription-plans/:id (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "{{adminAuth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\",\n  \"price\": 3500\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}", "host": ["{{baseUrl}}"], "path": ["subscription-plans", "{{subscriptionPlanId}}"] }
+          }
+        },
+        {
+          "name": "DELETE /subscription-plans/:id (Admin - Archive)",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "{{adminAuth}}" } ],
+            "url": { "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}", "host": ["{{baseUrl}}"], "path": ["subscription-plans", "{{subscriptionPlanId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Subscriptions",
+      "item": [
+        {
+          "name": "GET /user-subscriptions/me",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "url": { "raw": "{{baseUrl}}/user-subscriptions/me", "host": ["{{baseUrl}}"], "path": ["user-subscriptions", "me"] }
+          }
+        },
+        {
+          "name": "POST /user-subscriptions (Create)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json && json.data && json.data.subscription && json.data.subscription.id) {",
+            "  pm.collectionVariables.set('userSubscriptionId', json.data.subscription.id);",
+            "}"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "{{auth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{subscriptionPlanId}}\",\n  \"paymentReference\": \"PAYMENT_REF_12345\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/user-subscriptions", "host": ["{{baseUrl}}"], "path": ["user-subscriptions"] }
+          }
+        },
+        {
+          "name": "DELETE /user-subscriptions/:id (Cancel)",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "url": { "raw": "{{baseUrl}}/user-subscriptions/{{userSubscriptionId}}", "host": ["{{baseUrl}}"], "path": ["user-subscriptions", "{{userSubscriptionId}}"] }
+          }
+        }
+      ]
+    },
+    {
       "name": "Validation Requests",
       "item": [
-        { "name": "GET /validation-requests", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/validation-requests", "host": ["{{baseUrl}}"], "path": ["validation-requests"] } } },
-        { "name": "GET /validation-requests/:id", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "{{auth}}" } ], "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] } } },
-        { "name": "PATCH /validation-requests/:id", "request": { "method": "PATCH", "header": [ { "key": "Authorization", "value": "{{auth}}" }, { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"status\": \"Assigned\"\n}" }, "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] } } }
+        {
+          "name": "GET /validation-requests",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "url": { "raw": "{{baseUrl}}/validation-requests", "host": ["{{baseUrl}}"], "path": ["validation-requests"] }
+          }
+        },
+        {
+          "name": "GET /validation-requests/:id",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{auth}}" } ],
+            "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] }
+          }
+        },
+        {
+          "name": "PATCH /validation-requests/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "{{auth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Assigned\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}"] }
+          }
+        },
+        {
+          "name": "PATCH /validation-requests/:id/complete (Expert)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "{{expertAuth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"Approved\",\n  \"feedback\": \"Great work! All questions are accurate.\",\n  \"correctedQuestions\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}/complete", "host": ["{{baseUrl}}"], "path": ["validation-requests", "{{validationRequestId}}", "complete"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Commission Records",
+      "item": [
+        {
+          "name": "GET /commission-records (Expert/Admin)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{expertAuth}}" } ],
+            "url": { "raw": "{{baseUrl}}/commission-records?page=1&pageSize=20", "host": ["{{baseUrl}}"], "path": ["commission-records"], "query": [ { "key": "page", "value": "1" }, { "key": "pageSize", "value": "20" } ] }
+          }
+        },
+        {
+          "name": "GET /commission-records/summary (Expert)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{expertAuth}}" } ],
+            "url": { "raw": "{{baseUrl}}/commission-records/summary", "host": ["{{baseUrl}}"], "path": ["commission-records", "summary"] }
+          }
+        },
+        {
+          "name": "GET /commission-records/:id",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{expertAuth}}" } ],
+            "url": { "raw": "{{baseUrl}}/commission-records/{{commissionRecordId}}", "host": ["{{baseUrl}}"], "path": ["commission-records", "{{commissionRecordId}}"] }
+          }
+        },
+        {
+          "name": "PATCH /commission-records/:id/mark-paid (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "{{adminAuth}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentReference\": \"BANK_TRANSFER_98765\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/commission-records/{{commissionRecordId}}/mark-paid", "host": ["{{baseUrl}}"], "path": ["commission-records", "{{commissionRecordId}}", "mark-paid"] }
+          }
+        }
       ]
     },
     {

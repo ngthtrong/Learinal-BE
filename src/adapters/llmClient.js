@@ -46,19 +46,14 @@ class LLMClient {
 
   // input: { contextText, numQuestions, difficulty, topics }
   async generateQuestions(input) {
-    const mode = process.env.LLM_MODE || "stub";
     const { contextText = "", numQuestions = 10, difficulty = "Hiểu", topics = [] } = input || {};
 
-    if (mode === "stub" || !this.config.apiKey) {
-      const qs = Array.from({ length: numQuestions }, (_, i) => ({
-        questionId: `q${i + 1}`,
-        questionText: `Stub question ${i + 1}`,
-        options: ["A", "B", "C", "D"],
-        correctAnswerIndex: Math.floor(Math.random() * 4),
-        explanation: "Stub explanation",
-        difficultyLevel: difficulty,
-      }));
-      return { questions: qs };
+    // Always use real Gemini API - production mode only
+    if (!this.config.apiKey) {
+      throw Object.assign(
+        new Error('GEMINI_API_KEY is required for question generation'),
+        { status: 500, code: 'MissingConfiguration' }
+      );
     }
 
     const safeContext = String(contextText).slice(0, 20000);
@@ -80,11 +75,16 @@ Ensure difficultyLevel is set to "${difficulty}" for all questions unless the co
 
   // input: { text }
   async summarize(input) {
-    const mode = process.env.LLM_MODE || "stub";
     const { text = "" } = input || {};
-    if (mode === "stub" || !this.config.apiKey) {
-      return { summaryShort: "Stub short summary.", summaryFull: "Stub full summary." };
+    
+    // Always use real Gemini API - production mode only
+    if (!this.config.apiKey) {
+      throw Object.assign(
+        new Error('GEMINI_API_KEY is required for content summarization'),
+        { status: 500, code: 'MissingConfiguration' }
+      );
     }
+    
     const safe = String(text).slice(0, 20000);
     const prompt = `Summarize the following content. Return ONLY valid JSON (no markdown fences, no extra text) with shape: { "summaryShort": string (<= 120 words), "summaryFull": string (<= 300 words) }.
 Content:\n${safe}`;

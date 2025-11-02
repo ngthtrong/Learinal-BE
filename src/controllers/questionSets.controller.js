@@ -178,17 +178,63 @@ module.exports = {
   // POST /question-sets/:id/review
   requestReview: async (req, res, next) => {
     try {
-      // Minimal stub: reply 202 with a fake ValidationRequest shape
-      const id = req.params.id;
-      const body = {
-        id: `${id}-vr`,
-        setId: id,
-        status: "PendingAssignment",
-        requestTime: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      res.status(202).json(body);
+      const { id: setId } = req.params;
+      const userId = req.user.id;
+
+      // 1. Validate ownership
+      const questionSet = await repo.findById(setId);
+      if (!questionSet || questionSet.userId.toString() !== userId) {
+        return res.status(404).json({
+          code: 'NotFound',
+          message: 'Question set not found',
+        });
+      }
+
+      // 2. Check if already has pending/assigned validation request
+      const ValidationRequestsRepository = require('../repositories/validationRequests.repository');
+      const validationRequestsRepo = new ValidationRequestsRepository();
+      
+      const existingRequest = await validationRequestsRepo.findOne({
+        setId,
+        status: { $in: ['PendingAssignment', 'Assigned'] },
+      });
+
+      if (existingRequest) {
+        return res.status(409).json({
+          code: 'Conflict',
+          message: 'Validation request already exists for this question set',
+          details: {
+            requestId: existingRequest._id.toString(),
+            status: existingRequest.status,
+          },
+        });
+      }
+
+      // 3. Create validation request
+      const validationRequest = await validationRequestsRepo.create({
+        setId,
+        learnerId: userId,
+        status: 'PendingAssignment',
+        requestTime: new Date(),
+      });
+
+      // 4. Enqueue assignment job
+      const { enqueueEmail } = require('../adapters/queue');
+      // Note: We'll use email queue temporarily until we have dedicated validation queue
+      await enqueueEmail({
+        type: 'validation.requested',
+        requestId: validationRequest._id.toString(),
+        setId,
+        learnerId: userId,
+      });
+
+      res.status(202).json({
+        id: validationRequest._id.toString(),
+        setId,
+        status: 'PendingAssignment',
+        requestTime: validationRequest.requestTime,
+        message: 'Validation request submitted. An expert will be assigned shortly.',
+      });
     } catch (e) {
       next(e);
     }

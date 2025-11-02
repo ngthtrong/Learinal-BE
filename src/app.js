@@ -9,8 +9,12 @@ const healthRoutes = require("./routes/health.routes");
 const requestId = require("./middleware/requestId");
 const errorFormatter = require("./middleware/errorFormatter");
 const errorHandler = require("./middleware/errorHandler");
+const { initializeServices } = require("./initServices");
 
 const app = express();
+
+// Initialize services and inject into app.locals
+initializeServices(app);
 
 // Core middleware
 app.use(requestId);

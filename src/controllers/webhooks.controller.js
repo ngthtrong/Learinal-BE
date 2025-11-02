@@ -16,7 +16,10 @@ function extractUserIdFromText(text) {
 module.exports = {
   stripe: async (req, res, next) => {
     try {
-      throw Object.assign(new Error("NotImplemented"), { status: 501 });
+      // Stripe webhook handling not currently used
+      // SePay is the primary payment processor
+      // If Stripe integration is needed, implement webhook verification and event handling here
+      res.status(200).json({ received: true });
     } catch (e) {
       next(e);
     }

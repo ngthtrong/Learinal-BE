@@ -57,14 +57,8 @@ const env = {
   s3Region: process.env.S3_REGION || "",
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
 
-  // Feature flags / modes (stub vs real, etc.)
-  authMode: process.env.AUTH_MODE || "stub",
-  // Optional override just for local email/password flows
-  localAuthMode: process.env.LOCAL_AUTH_MODE || "",
-  llmMode: process.env.LLM_MODE || "stub",
-  queueMode: process.env.QUEUE_MODE || "stub",
+  // Storage mode (local for development, s3/cloudinary for production)
   storageMode: process.env.STORAGE_MODE || "local",
-  paymentMode: process.env.PAYMENT_MODE || "stub",
   dbMode: process.env.DB_MODE || "mongo",
 };
 

@@ -5,6 +5,7 @@ const authenticateJWT = require('../middleware/authenticateJWT');
 const rateLimit = require('../middleware/rateLimit');
 const inputValidation = require('../middleware/inputValidation');
 const idempotencyKey = require('../middleware/idempotencyKey');
+const { checkQuestionGenerationLimit } = require('../middleware/checkEntitlement');
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ const genSchema = Joi.object({
 }).unknown(true);
 
 router.get('/', rateLimit({ limit: 60 }), authenticateJWT, controller.list);
-router.post('/generate', rateLimit({ limit: 30 }), authenticateJWT, idempotencyKey, inputValidation(genSchema), controller.generate);
+router.post('/generate', rateLimit({ limit: 30 }), authenticateJWT, checkQuestionGenerationLimit, idempotencyKey, inputValidation(genSchema), controller.generate);
 router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.get);
 router.patch('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.update);
 router.post('/:id/share', rateLimit({ limit: 30 }), authenticateJWT, controller.share);
