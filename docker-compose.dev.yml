@@ -1,22 +1,6 @@
 version: '3.8'
 
 services:
-  # MongoDB for development
-  mongodb:
-    image: mongo:7
-    container_name: learinal-dev-mongodb
-    restart: unless-stopped
-    ports:
-      - '27017:27017'
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: devuser
-      MONGO_INITDB_ROOT_PASSWORD: devpass
-      MONGO_INITDB_DATABASE: learinal-dev
-    volumes:
-      - mongodb_dev_data:/data/db
-    networks:
-      - learinal-dev-network
-
   # Redis for development
   redis:
     image: redis:7-alpine
@@ -40,7 +24,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      MONGO_URI: mongodb://devuser:devpass@mongodb:27017/learinal-dev?authSource=admin
+      MONGO_URI: ${MONGO_URI}
       REDIS_URI: redis://redis:6379
       LOG_LEVEL: debug
     volumes:
@@ -50,15 +34,41 @@ services:
       # Exclude node_modules
       - /app/node_modules
     depends_on:
-      - mongodb
       - redis
     networks:
       - learinal-dev-network
     command: npm run dev
 
-volumes:
-  mongodb_dev_data:
-    driver: local
+  # Worker for background jobs (email, document processing, etc.)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: learinal-dev-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      MONGO_URI: ${MONGO_URI}
+      REDIS_URI: redis://redis:6379
+      LOG_LEVEL: debug
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER}
+      EMAIL_VERIFY_TEMPLATE_ID: ${EMAIL_VERIFY_TEMPLATE_ID}
+      PASSWORD_RESET_TEMPLATE_ID: ${PASSWORD_RESET_TEMPLATE_ID}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      - ./index.js:/app/index.js
+      # Exclude node_modules
+      - /app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - learinal-dev-network
+    command: npm run worker
 
 networks:
   learinal-dev-network:

@@ -50,8 +50,33 @@ class EmailClient {
       } else {
         msg.html = this.buildHtml(templateId, variables);
       }
-      await sgMail.send(msg);
-      return true;
+      
+      try {
+        const response = await sgMail.send(msg);
+        // Log successful send with response details
+        const logger = require('../utils/logger');
+        logger.info({ 
+          to, 
+          from, 
+          subject, 
+          templateId,
+          statusCode: response[0]?.statusCode,
+          messageId: response[0]?.headers?.['x-message-id']
+        }, 'SendGrid email sent');
+        return true;
+      } catch (error) {
+        const logger = require('../utils/logger');
+        logger.error({ 
+          to, 
+          from, 
+          subject, 
+          templateId,
+          error: error.message,
+          code: error.code,
+          response: error.response?.body
+        }, 'SendGrid send failed');
+        throw error;
+      }
     }
 
     if (this.provider === "ses") {

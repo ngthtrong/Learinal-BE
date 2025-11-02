@@ -6,6 +6,7 @@ const logger = require("../utils/logger");
 const OAuthClient = require("../adapters/oauthClient");
 const UsersRepository = require("../repositories/users.repository");
 const EmailClient = require("../adapters/emailClient");
+const { enqueueEmail } = require("../adapters/queue");
 const RefreshTokensRepository = require("../repositories/refreshTokens.repository");
 const { verifyGoogleIdToken } = require("../utils/oidc");
 
@@ -291,12 +292,27 @@ module.exports = {
           expiresIn: env.emailVerifyExpiresIn,
         });
         const link = `${env.appBaseUrl}/verify-email?token=${encodeURIComponent(token)}`;
-        await emailClient.send(
-          created.email,
-          "Verify your email",
-          emailCfg.verifyTemplateId || null,
-          { fullName: created.fullName, link }
-        );
+        
+        // Try to enqueue email; if queue not available, send directly
+        try {
+          await enqueueEmail({
+            to: created.email,
+            subject: "Verify your email - Learinal",
+            templateId: null, // Temporarily disable template for testing
+            variables: { fullName: created.fullName, link }
+          });
+          logger.info({ email: created.email }, 'Verification email queued');
+        } catch (queueError) {
+          // Fallback to direct send if queue is not available
+          logger.warn({ error: queueError.message }, 'Queue not available, sending email directly');
+          await emailClient.send(
+            created.email,
+            "Verify your email - Learinal",
+            null, // Temporarily disable template for testing
+            { fullName: created.fullName, link }
+          );
+          logger.info({ email: created.email }, 'Verification email sent directly');
+        }
       } catch (e) {
         // In non-production, surface a concise reason to the logs to aid setup
         if (env.nodeEnv !== "production") {

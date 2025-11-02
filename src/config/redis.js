@@ -2,6 +2,9 @@
 // - node-redis (redis) v4: used for rate limiting store and simple KV (idempotency)
 // - ioredis: used for BullMQ (queues)
 
+// Ensure environment variables are loaded
+require('dotenv').config();
+
 let nodeRedisClient = null;
 let ioRedisClient = null;
 const logger = require("../utils/logger");
