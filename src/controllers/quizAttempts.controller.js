@@ -1,5 +1,6 @@
 const QuizAttemptsRepository = require('../repositories/quizAttempts.repository');
 const QuestionSetsRepository = require('../repositories/questionSets.repository');
+const notificationService = require('../services/notification.service');
 
 const attemptsRepo = new QuizAttemptsRepository();
 const qsetRepo = new QuestionSetsRepository();
@@ -45,6 +46,16 @@ module.exports = {
       const score = max > 0 ? Math.round((total / max) * 100) : 0;
       const end = new Date();
       const updated = await attemptsRepo.updateById(attemptId, { $set: { userAnswers, score, isCompleted: true, endTime: end } }, { new: true });
+      
+      // Emit real-time notification for quiz completion
+      notificationService.emitQuizCompleted(user.id, {
+        _id: updated._id || updated.id,
+        questionSet: attempt.setId,
+        score,
+        totalQuestions: (qset.questions || []).length,
+        completedAt: end,
+      });
+      
       return res.status(200).json({ id: String(updated._id || updated.id), ...updated });
     } catch (e) { next(e); }
   },

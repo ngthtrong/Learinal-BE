@@ -15,8 +15,12 @@ router.use("/subscription-plans", require("./subscriptionPlans.routes"));
 router.use("/user-subscriptions", require("./userSubscriptions.routes"));
 router.use("/notifications", require("./notifications.routes"));
 router.use("/admin", require("./admin.routes"));
+router.use("/moderation", require("./moderation.routes"));
+router.use("/search", require("./search.routes"));
+router.use("/batch", require("./batch.routes"));
+router.use("/export", require("./export.routes"));
+router.use("/import", require("./import.routes"));
 router.use("/webhooks", require("./webhooks.routes"));
-router.use("/payments", require("./payments.routes"));
 router.use("/payments", require("./payments.routes"));
 
 module.exports = router;

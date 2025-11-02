@@ -2,6 +2,7 @@ const ValidationRequestsRepository = require('../repositories/validationRequests
 const QuestionSetsRepository = require('../repositories/questionSets.repository');
 const UsersRepository = require('../repositories/users.repository');
 const reviewCompleted = require('../jobs/review.completed');
+const notificationService = require('../services/notification.service');
 
 const repo = new ValidationRequestsRepository();
 const questionSetsRepo = new QuestionSetsRepository();
@@ -35,6 +36,12 @@ module.exports = {
       const allowed = {}; if (req.body.status) allowed.status = req.body.status; if (req.body.expertId) allowed.expertId = req.body.expertId;
       const updated = await repo.updateById(req.params.id, { $set: allowed }, { new: true });
       if (!updated) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
+      
+      // Emit real-time notification if assigned to expert
+      if (req.body.expertId && req.body.status === 'Assigned') {
+        notificationService.emitValidationAssigned(req.body.expertId, updated);
+      }
+      
       res.status(200).json(mapId(updated));
     } catch (e) { next(e); }
   },
@@ -109,6 +116,15 @@ module.exports = {
         setId: request.setId.toString(),
         decision,
       });
+
+      // 6. Emit real-time notification to learner
+      const updatedRequest = await repo.findById(requestId);
+      if (updatedRequest && updatedRequest.requestedBy) {
+        notificationService.emitValidationCompleted(
+          updatedRequest.requestedBy.toString(),
+          updatedRequest
+        );
+      }
 
       res.status(200).json({
         id: requestId,

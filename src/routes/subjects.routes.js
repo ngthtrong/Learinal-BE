@@ -4,6 +4,7 @@ const controller = require('../controllers/subjects.controller');
 const authenticateJWT = require('../middleware/authenticateJWT');
 const rateLimit = require('../middleware/rateLimit');
 const inputValidation = require('../middleware/inputValidation');
+const { cacheResponse, CacheTTL } = require('../middleware/cacheResponse');
 
 const router = express.Router();
 
@@ -27,13 +28,13 @@ const patchSchema = Joi.object({
 }).unknown(true);
 
 // GET /subjects
-router.get('/', rateLimit({ limit: 60 }), authenticateJWT, controller.list);
+router.get('/', rateLimit({ limit: 60 }), authenticateJWT, cacheResponse({ ttl: CacheTTL.SUBJECT }), controller.list);
 
 // POST /subjects
 router.post('/', rateLimit({ limit: 60 }), authenticateJWT, inputValidation(postSchema), controller.create);
 
 // GET /subjects/:id
-router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.get);
+router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, cacheResponse({ ttl: CacheTTL.SUBJECT }), controller.get);
 
 // PATCH /subjects/:id
 router.patch('/:id', rateLimit({ limit: 60 }), authenticateJWT, inputValidation(patchSchema), controller.update);

@@ -2,16 +2,32 @@ const http = require("http");
 const app = require("./app");
 const { env, mongoose: mongooseCfg } = require("./config");
 const { ensureNoEviction } = require("./config/redis");
+const { initializeSocketIO } = require("./config/socket");
+const { createIndexes } = require("./config/indexes");
 const logger = require("./utils/logger");
+const cleanupTempFiles = require("./jobs/cleanup.tempfiles");
 
 const PORT = env.port || 3000;
 const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = initializeSocketIO(server);
+
+// Make io available to app
+app.set("io", io);
 
 async function start() {
   try {
     if ((process.env.DB_MODE || env.dbMode) !== "memory") {
       await mongooseCfg.connectMongoose(env.mongoUri, env.mongoDbName);
       logger.info({ db: env.mongoDbName }, "Connected to MongoDB (Mongoose)");
+      
+      // Create MongoDB indexes for optimal performance
+      if (env.nodeEnv !== "test") {
+        await createIndexes().catch((err) => {
+          logger.warn({ err }, "Failed to create indexes (non-critical)");
+        });
+      }
     } else {
       logger.info("DB_MODE=memory: skipping MongoDB connection");
     }
@@ -27,6 +43,14 @@ async function start() {
   server.listen(PORT, () => {
     logger.info({ port: PORT }, "Learinal API listening");
   });
+
+  // Cron job: cleanup temp files every hour
+  setInterval(() => {
+    cleanupTempFiles().catch((err) => {
+      logger.error({ err }, "[cron] cleanup.tempfiles failed");
+    });
+  }, 60 * 60 * 1000); // Every 1 hour
+  logger.info("[cron] cleanup.tempfiles scheduled (every 1 hour)");
 
   // Handle common server errors (e.g., port already in use)
   server.on("error", (err) => {

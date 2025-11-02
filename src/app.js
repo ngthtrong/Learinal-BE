@@ -9,74 +9,66 @@ const healthRoutes = require("./routes/health.routes");
 const requestId = require("./middleware/requestId");
 const errorFormatter = require("./middleware/errorFormatter");
 const errorHandler = require("./middleware/errorHandler");
+const sanitizeInputs = require("./middleware/sanitizeInputs");
+const getCorsOptions = require("./config/cors");
+const getHelmetOptions = require("./config/helmet");
+const getCompressionMiddleware = require("./config/compression");
+const { generalLimiter } = require("./config/rateLimits");
 const { initializeServices } = require("./initServices");
+const { responseTime } = require("./utils/performance");
+const { requestLogger } = require("./config/logger");
+const { metricsMiddleware } = require("./middleware/metricsCollector");
+const { initSentry, sentryErrorHandler } = require("./config/sentry");
 
 const app = express();
+
+// Initialize Sentry (must be first)
+initSentry(app);
 
 // Initialize services and inject into app.locals
 initializeServices(app);
 
 // Core middleware
 app.use(requestId);
-app.use(cors());
+
+// Monitoring: Structured logging
+app.use(requestLogger);
+
+// Monitoring: Metrics collection
+app.use(metricsMiddleware);
+
+// Performance: Response time tracking
+app.use(responseTime);
+
+// Performance: Compression (gzip/brotli)
+app.use(getCompressionMiddleware());
+
+// Security: Helmet with enhanced configuration
+app.use(helmet(getHelmetOptions()));
+
+// Security: CORS with strict origin validation
+app.use(cors(getCorsOptions()));
+
+// Security: Input sanitization (prevent NoSQL injection, XSS)
+app.use(sanitizeInputs);
+
+// Parse cookies (for OAuth state and optional refresh cookie)
+app.use(cookieParser());
+
 // Capture raw body for webhook signature verification (Stripe/Sepay/etc.)
 app.use(
   express.json({
     verify: (req, res, buf) => {
       if (buf && buf.length) {
-        req.rawBody = buf.toString('utf8');
+        req.rawBody = buf.toString("utf8");
       }
     },
   })
 );
-// Security headers
-// In development, relax CSP to allow inline scripts/styles for simple test pages
-if (env.nodeEnv !== "production") {
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-          "default-src": ["'self'"],
-          "script-src": ["'self'", "'unsafe-inline'"],
-          "style-src": ["'self'", "'unsafe-inline'"],
-          "img-src": ["'self'", "data:"],
-          "object-src": ["'none'"],
-        },
-      },
-    })
-  );
-} else {
-  app.use(helmet());
-}
-// Parse cookies (for OAuth state and optional refresh cookie)
-app.use(cookieParser());
-// CORS: restrict by env when provided
-const allowed = (env.corsAllowedOrigins || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      // Allow non-browser or same-origin requests that don't send Origin
-      if (!origin) return cb(null, true);
-      // In production, an empty allowlist must not default-allow all
-      if (allowed.length === 0) {
-        if (env.nodeEnv === "production") {
-          return cb(new Error("CORS not allowed: empty allowlist in production"), false);
-        }
-        // In non-production, allow all for convenience
-        return cb(null, true);
-      }
-      if (allowed.includes(origin)) return cb(null, true);
-      return cb(new Error("CORS not allowed for this origin"), false);
-    },
-    credentials: true,
-  })
-);
-app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Security: General rate limiting (100 req/15min per IP)
+app.use(generalLimiter);
 
 // Public health endpoint (no auth required)
 app.use("/health", healthRoutes);
@@ -103,6 +95,12 @@ if (env.nodeEnv !== "production") {
 
 // Base URL: /api/v1
 app.use("/api/v1", routes);
+
+// Health & Monitoring endpoints (no /api/v1 prefix)
+app.use("/", healthRoutes);
+
+// Sentry error handler (must be before other error handlers)
+sentryErrorHandler(app);
 
 // 404 handler (after all routes)
 app.use((req, res) => {

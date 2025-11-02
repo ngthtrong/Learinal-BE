@@ -2,6 +2,7 @@ const QuestionSetsRepository = require("../repositories/questionSets.repository"
 const DocumentsRepository = require("../repositories/documents.repository");
 const { llm } = require("../config");
 const LLMClient = require("../adapters/llmClient");
+const notificationService = require("../services/notification.service");
 
 module.exports = async function questionsGenerate(payload) {
   const { questionSetId, documentId, numQuestions = 10, difficulty = "Hiểu" } = payload || {};
@@ -26,11 +27,16 @@ module.exports = async function questionsGenerate(payload) {
       topics: [],
     });
     if (Array.isArray(result.questions) && result.questions.length) {
-      await qrepo.updateById(
+      const updated = await qrepo.updateById(
         questionSetId,
         { $set: { questions: result.questions } },
         { new: true }
       );
+      
+      // Emit real-time notification
+      if (updated && updated.createdBy) {
+        notificationService.emitQuestionSetGenerated(updated.createdBy.toString(), updated);
+      }
     }
   } catch {
     // leave as-is on error
