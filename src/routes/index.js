@@ -16,5 +16,7 @@ router.use("/user-subscriptions", require("./userSubscriptions.routes"));
 router.use("/notifications", require("./notifications.routes"));
 router.use("/admin", require("./admin.routes"));
 router.use("/webhooks", require("./webhooks.routes"));
+router.use("/payments", require("./payments.routes"));
+router.use("/payments", require("./payments.routes"));
 
 module.exports = router;
