@@ -11,6 +11,8 @@ const PasswordResetTokenSchema = new Schema(
 );
 
 PasswordResetTokenSchema.index({ userId: 1, jti: 1 }, { unique: true });
+// Auto-cleanup expired password reset tokens
+PasswordResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const transform = (_, ret) => {
   if (!ret) return ret;

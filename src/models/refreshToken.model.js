@@ -21,6 +21,8 @@ const RefreshTokenSchema = new Schema(
 );
 
 RefreshTokenSchema.index({ userId: 1, jti: 1 }, { unique: true });
+// Auto-cleanup expired refresh tokens
+RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const transform = (_, ret) => {
   if (!ret) return ret;

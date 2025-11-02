@@ -7,21 +7,11 @@ const OAuthClient = require("../adapters/oauthClient");
 const UsersRepository = require("../repositories/users.repository");
 const EmailClient = require("../adapters/emailClient");
 const RefreshTokensRepository = require("../repositories/refreshTokens.repository");
+const { verifyGoogleIdToken } = require("../utils/oidc");
 
 const usersRepo = new UsersRepository();
 const emailClient = new EmailClient(emailCfg);
 const refreshRepo = new RefreshTokensRepository();
-
-function buildStubTokens(user) {
-  const now = Date.now();
-  return {
-    accessToken: `stub.access.${Buffer.from(`${user.id}.${now}`).toString("base64url")}`,
-    refreshToken: `stub.refresh.${Buffer.from(`${user.id}.${now + 1}`).toString("base64url")}`,
-    tokenType: "Bearer",
-    expiresIn: 3600,
-    user,
-  };
-}
 
 function buildRealTokens(user, { jti } = {}) {
   const payload = {
@@ -31,14 +21,22 @@ function buildRealTokens(user, { jti } = {}) {
     role: user.role || "Learner",
     status: user.status || "Active",
   };
-  const accessToken = jwt.sign(payload, env.jwtSecret, {
+  const accessTokenOpts = {
     expiresIn: env.jwtExpiresIn,
-  });
+    algorithm: env.jwtAlgorithm || "HS256",
+  };
+  if (env.jwtIssuer) accessTokenOpts.issuer = env.jwtIssuer;
+  if (env.jwtAudience) accessTokenOpts.audience = env.jwtAudience;
+  const accessToken = jwt.sign(payload, env.jwtSecret, accessTokenOpts);
   const refreshClaims = { sub: user.id, type: "refresh" };
   if (jti) refreshClaims.jti = jti;
-  const refreshToken = jwt.sign(refreshClaims, env.jwtRefreshSecret, {
+  const refreshTokenOpts = {
     expiresIn: env.jwtRefreshExpiresIn,
-  });
+    algorithm: env.jwtAlgorithm || "HS256",
+  };
+  if (env.jwtIssuer) refreshTokenOpts.issuer = env.jwtIssuer;
+  if (env.jwtAudience) refreshTokenOpts.audience = env.jwtAudience;
+  const refreshToken = jwt.sign(refreshClaims, env.jwtRefreshSecret, refreshTokenOpts);
   return {
     accessToken,
     refreshToken,
@@ -48,9 +46,7 @@ function buildRealTokens(user, { jti } = {}) {
   };
 }
 
-async function issueTokens(mode, user, { req } = {}) {
-  if (mode === "stub") return buildStubTokens(user);
-
+async function issueTokens(_mode, user, { req } = {}) {
   // real: create refresh with jti and store it for rotation/revoke
   const jti = randomUUID();
   const body = buildRealTokens(user, { jti });
@@ -68,6 +64,35 @@ async function issueTokens(mode, user, { req } = {}) {
     });
   } catch {}
   return body;
+}
+
+function setRefreshCookie(res, refreshToken) {
+  try {
+    const opts = {
+      httpOnly: true,
+      sameSite: env.cookieSameSite || "Lax",
+      secure: !!env.cookieSecure,
+      // Limit cookie to API routes; adjust if your FE expects a different scope
+      path: "/api/v1",
+    };
+    if (env.cookieDomain) opts.domain = env.cookieDomain;
+    // Set expiry based on token exp if available
+    const decoded = jwt.decode(refreshToken);
+    if (decoded && decoded.exp) {
+      opts.expires = new Date(decoded.exp * 1000);
+    }
+    res.cookie("rt", refreshToken, opts);
+    // Best-effort: clear any legacy root-path cookie to avoid duplicates
+    try {
+      res.clearCookie("rt", {
+        httpOnly: true,
+        sameSite: env.cookieSameSite || "Lax",
+        secure: !!env.cookieSecure,
+        domain: env.cookieDomain || undefined,
+        path: "/",
+      });
+    } catch {}
+  } catch {}
 }
 
 module.exports = {
@@ -297,12 +322,6 @@ module.exports = {
   // POST /auth/login (local credentials)
   login: async (req, res, next) => {
     try {
-      const mode =
-        process.env.LOCAL_AUTH_MODE ||
-        env.localAuthMode ||
-        process.env.AUTH_MODE ||
-        env.authMode ||
-        "stub";
       const { email, password } = req.body || {};
       const normalizedEmail = (email || "").toLowerCase().trim();
 
@@ -319,15 +338,26 @@ module.exports = {
         return res.status(401).json({ code: "Unauthorized", message: "Invalid email or password" });
       }
 
-      // Enforce account status: only Active accounts can login
-      if (userWithSensitive.status !== "Active") {
-        return res.status(403).json({ code: "Forbidden", message: "Account not active" });
+      // Enforce account status according to env policy
+      // - Always block Deactivated
+      // - If REQUIRE_EMAIL_VERIFIED_FOR_LOGIN=true, only allow Active
+      if (userWithSensitive.status === "Deactivated") {
+        return res.status(403).json({ code: "Forbidden", message: "Account is deactivated" });
+      }
+      const requireVerified = Boolean(env.requireEmailVerifiedForLogin);
+      if (requireVerified && userWithSensitive.status !== "Active") {
+        return res.status(403).json({ code: "Forbidden", message: "Email not verified" });
       }
 
       // Remove sensitive field from response
       const { hashedPassword: _omit, ...safeUser } = userWithSensitive;
-      const tokens = await issueTokens(mode, safeUser, { req });
-      return res.status(200).json(tokens);
+      // Local auth must always issue REAL tokens (no stub)
+      const tokens = await issueTokens("real", safeUser, { req });
+      // Ensure refresh token cookie is set for cookie-only refresh flow
+      setRefreshCookie(res, tokens.refreshToken);
+      // Do not expose refreshToken in response body (cookie-only)
+      const { refreshToken: _omitRt1, ...loginResp } = tokens;
+      return res.status(200).json(loginResp);
     } catch (err) {
       next(err);
     }
@@ -336,49 +366,92 @@ module.exports = {
   // POST /auth/exchange
   exchange: async (req, res, next) => {
     try {
-      const mode = process.env.AUTH_MODE || env.authMode || "stub";
-      if (mode === "stub") {
-        const devUserId = req.headers["x-dev-user-id"] || randomUUID();
-        const devUserRole = req.headers["x-dev-user-role"] || "Learner";
-        const email = `${devUserId}@example.test`;
-        const user = {
-          id: devUserId,
-          fullName: "Stub User",
-          email,
-          role: devUserRole,
-          status: "Active",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        const body = buildStubTokens(user);
-        return res.status(200).json(body);
-      }
-
-      // Real mode: Exchange Google code for tokens and issue our JWTs
-      const { code } = req.body || {};
+      // Always-real: Exchange Google code for tokens and issue our JWTs
+      const { code, state, codeVerifier } = req.body || {};
       if (!code) {
         return res.status(400).json({ code: "ValidationError", message: "Missing code in body" });
       }
+      // Verify state if required
+      if (env.oauthRequireState) {
+        const cookieState = req.cookies?.oauth_state;
+        if (!state || !cookieState || state !== cookieState) {
+          return res.status(403).json({ code: "Forbidden", message: "Invalid OAuth state" });
+        }
+      }
       const client = new OAuthClient(env);
-      const { profile } = await client.exchangeCode(code);
+      const { tokens, profile } = await client.exchangeCode(code, { codeVerifier });
+
+      // Verify id_token when present
+      if (tokens?.id_token) {
+        try {
+          await verifyGoogleIdToken(tokens.id_token, env.googleClientId);
+        } catch {
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid id_token" });
+        }
+      }
       const normalizedEmail = (profile.email || "").toLowerCase().trim();
 
-      // Find or create user in Mongo so our JWT 'sub' is our own user id
-      let user = await usersRepo.findByEmail(normalizedEmail);
+      // Enforce email verification policy for OAuth if configured
+      if (env.requireEmailVerifiedForLogin && profile.email && profile.email_verified !== true) {
+        return res.status(403).json({ code: "Forbidden", message: "Email not verified" });
+      }
+
+      // Find or create user in Mongo: prefer provider identity, fallback to email
+      const provider = "google";
+      const providerSub = profile.sub;
+      let user = null;
+      if (providerSub) {
+        user = await usersRepo.findByProviderSub(provider, providerSub);
+      }
+      if (!user && normalizedEmail) {
+        user = await usersRepo.findByEmail(normalizedEmail);
+      }
       if (!user) {
-        // If provider reports email_verified, activate immediately; otherwise keep PendingActivation
-        const isVerified = Boolean(profile.email_verified ?? true);
+        // Production-hardening: only treat as verified when provider explicitly reports true
+        // Default to PendingActivation if the claim is missing or false
+        const isVerified = profile.email_verified === true;
         user = await usersRepo.createUser({
           fullName: profile.name || normalizedEmail,
           email: normalizedEmail,
+          provider,
+          providerSub: providerSub || null,
+          providerEmail: normalizedEmail || null,
           role: "Learner",
           status: isVerified ? "Active" : "PendingActivation",
+        });
+      } else if (providerSub && !user.providerSub) {
+        // Link provider identity if missing
+        user = await usersRepo.updateUserById(user.id, {
+          provider,
+          providerSub,
+          providerEmail: normalizedEmail || null,
         });
       }
 
       const body = await issueTokens("real", user, { req });
-      return res.status(200).json(body);
+      // Set refresh token cookie for improved security
+      setRefreshCookie(res, body.refreshToken);
+      // Do not expose refreshToken in response body (cookie-only)
+      const { refreshToken: _omitRt2, ...exchangeResp } = body;
+      // Clear one-time OAuth state cookie after successful exchange
+      try {
+        res.clearCookie("oauth_state", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/api/v1/auth",
+        });
+        // Also clear any legacy root-path oauth_state cookie
+        res.clearCookie("oauth_state", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/",
+        });
+      } catch {}
+      return res.status(200).json(exchangeResp);
     } catch (err) {
       next(err);
     }
@@ -387,59 +460,96 @@ module.exports = {
   // POST /auth/refresh
   refresh: async (req, res, next) => {
     try {
-      const mode = process.env.AUTH_MODE || env.authMode || "stub";
-      if (mode === "stub") {
-        const devUserId = req.headers["x-dev-user-id"] || randomUUID();
-        const devUserRole = req.headers["x-dev-user-role"] || "Learner";
-        const email = `${devUserId}@example.test`;
-        const user = {
-          id: devUserId,
-          fullName: "Stub User",
-          email,
-          role: devUserRole,
-          status: "Active",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const body = buildStubTokens(user);
-        return res.status(200).json(body);
+      // Enforce cookie-only refresh and require a custom header to mitigate CSRF form-post
+      const requestedBy = req.get("x-requested-by");
+      if (!requestedBy) {
+        return res
+          .status(403)
+          .json({ code: "Forbidden", message: "Missing X-Requested-By header" });
       }
-
-      const { refreshToken } = req.body || {};
+      const refreshToken = req.cookies?.rt;
       if (!refreshToken) {
         return res.status(400).json({ code: "ValidationError", message: "Missing refreshToken" });
       }
       let decoded;
       try {
-        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret);
+        const verifyOpts = {
+          algorithms: [env.jwtAlgorithm || "HS256"],
+        };
+        if (env.jwtIssuer) verifyOpts.issuer = env.jwtIssuer;
+        if (env.jwtAudience) verifyOpts.audience = env.jwtAudience;
+        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret, verifyOpts);
       } catch {
         return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
       }
       const sub = decoded.sub;
       const jti = decoded.jti;
 
-      // If we use stored refresh tokens, validate jti not revoked/expired
       if (jti) {
-        const valid = await refreshRepo.isValid(jti);
-        if (!valid) {
+        // Stronger validation: ensure the token exists, not revoked/expired, and belongs to the same user
+        const rec = await refreshRepo.findByJti(jti);
+        const now = Date.now();
+        const belongsToUser = rec?.userId && String(rec.userId) === String(sub);
+        const notRevoked = !rec?.revokedAt;
+        const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
+        if (!rec || !belongsToUser || !notRevoked || !notExpired) {
           return res.status(401).json({
             code: "Unauthorized",
-            message: "Refresh token expired or revoked",
+            message: "Refresh token expired, revoked, or invalid",
           });
         }
-        // rotate: revoke old and issue new pair
         await refreshRepo.revokeByJti(jti);
         const user = await usersRepo.findByUserId(sub);
         const body = await issueTokens("real", user, { req });
-        return res.status(200).json(body);
+        setRefreshCookie(res, body.refreshToken);
+        const { refreshToken: _omitRt3, ...refreshResp } = body;
+        return res.status(200).json(refreshResp);
       }
 
-      // Fallback: if no jti (older JWT style), just issue new access token
+      // Legacy: if no jti (older JWT style), just issue new access token
       const payload = { sub, role: "Learner" };
       const accessToken = jwt.sign(payload, env.jwtSecret, {
         expiresIn: env.jwtExpiresIn,
+        algorithm: env.jwtAlgorithm || "HS256",
+        ...(env.jwtIssuer ? { issuer: env.jwtIssuer } : {}),
+        ...(env.jwtAudience ? { audience: env.jwtAudience } : {}),
       });
       return res.status(200).json({ accessToken, tokenType: "Bearer", expiresIn: 3600 });
+    } catch (err) {
+      next(err);
+    }
+  },
+  // POST /auth/logout - revoke current refresh token (from cookie/body)
+  logout: async (req, res, next) => {
+    try {
+      const bodyToken = req.body?.refreshToken;
+      const cookieToken = req.cookies?.rt;
+      const refreshToken = bodyToken || cookieToken;
+      if (refreshToken) {
+        try {
+          const decoded = jwt.verify(refreshToken, env.jwtRefreshSecret);
+          if (decoded?.jti) await refreshRepo.revokeByJti(decoded.jti);
+        } catch {}
+      }
+      // Clear cookie
+      try {
+        res.clearCookie("rt", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/api/v1",
+        });
+        // Also clear legacy root-path cookie if present
+        res.clearCookie("rt", {
+          httpOnly: true,
+          sameSite: env.cookieSameSite || "Lax",
+          secure: !!env.cookieSecure,
+          domain: env.cookieDomain || undefined,
+          path: "/",
+        });
+      } catch {}
+      return res.status(204).send();
     } catch (err) {
       next(err);
     }

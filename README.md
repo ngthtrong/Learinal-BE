@@ -43,6 +43,7 @@ Song song theo track:
      - Error handler chuẩn hóa `{code,message,details}`
      - Rate-limit headers, pagination helpers
      - Idempotency-Key và ETag infra
+
 2. BE2 – Subjects + Documents + Ingestion/Summary (ĐỘC LẬP)
 
    - Khi `AUTH_MODE=stub`, nhận `X-Dev-User-Id/Role` để xác định ownership, không cần BE1 hoàn tất.
@@ -54,6 +55,7 @@ Song song theo track:
      - LLMAdapter: `LLM_MODE=stub` trả về summary giả, chuyển `real` sau.
      - Queue: `QUEUE_MODE=stub` (run in-process) trước khi dùng Redis/RabbitMQ.
    - Worker: extract text + summarize (retry/backoff) hoạt động nội bộ trong stub mode.
+
 3. BE3 – QuestionSets + QuizAttempts + Validation + Notifications (ĐỘC LẬP)
 
    - Chạy với `AUTH_MODE=stub` và data fixtures nếu BE2 chưa có:
@@ -276,18 +278,18 @@ Ghi chú: Danh sách trên phản ánh toàn bộ bề mặt API trong `docs/api
 
 Quick start for BE1 endpoints with no external deps:
 
-1) Set env to stub/dev (skip Mongo):
+1. Set env to stub/dev (skip Mongo):
 
    - AUTH_MODE=stub
    - DB_MODE=memory
 
-2) Run the server:
+2. Run the server:
 
 ```powershell
 $env:AUTH_MODE="stub"; $env:DB_MODE="memory"; npm run start
 ```
 
-3) Call endpoints:
+3. Call endpoints:
 
 - Health: GET http://localhost:3000/api/v1/health
 - Exchange token (stub): POST http://localhost:3000/api/v1/auth/exchange
