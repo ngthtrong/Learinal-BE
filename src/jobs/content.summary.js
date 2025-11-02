@@ -27,7 +27,7 @@ module.exports = async function contentSummary(payload) {
     );
     logger.info({ documentId }, "[summary] completed");
   } catch (e) {
-    logger.error({ documentId, err: e?.message || e }, "[summary] failed");
+    logger.error({ documentId, err: e?.message || e, stack: e?.stack }, "[summary] failed");
     await docsRepo.updateById(documentId, { $set: { status: "Error" } }, { new: true });
   }
 };

@@ -27,6 +27,22 @@ services:
       MONGO_URI: ${MONGO_URI}
       REDIS_URI: redis://redis:6379
       LOG_LEVEL: debug
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SEPAY_API_KEY: ${SEPAY_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
     volumes:
       # Mount source code for hot reload
       - ./src:/app/src
@@ -37,7 +53,7 @@ services:
       - redis
     networks:
       - learinal-dev-network
-    command: npm run dev
+    command: npm start
 
   # Worker for background jobs (email, document processing, etc.)
   worker:
@@ -52,12 +68,21 @@ services:
       MONGO_URI: ${MONGO_URI}
       REDIS_URI: redis://redis:6379
       LOG_LEVEL: debug
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY}
       EMAIL_FROM: ${EMAIL_FROM}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER}
       EMAIL_VERIFY_TEMPLATE_ID: ${EMAIL_VERIFY_TEMPLATE_ID}
       PASSWORD_RESET_TEMPLATE_ID: ${PASSWORD_RESET_TEMPLATE_ID}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      SENTRY_DSN: ${SENTRY_DSN}
     volumes:
       # Mount source code for hot reload
       - ./src:/app/src
