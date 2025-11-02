@@ -1,49 +1,69 @@
-const ValidationRequestsRepository = require('../repositories/validationRequests.repository');
-const QuestionSetsRepository = require('../repositories/questionSets.repository');
-const UsersRepository = require('../repositories/users.repository');
-const reviewCompleted = require('../jobs/review.completed');
-const notificationService = require('../services/notification.service');
+const ValidationRequestsRepository = require("../repositories/validationRequests.repository");
+const QuestionSetsRepository = require("../repositories/questionSets.repository");
+const UsersRepository = require("../repositories/users.repository");
+const reviewCompleted = require("../jobs/review.completed");
+const notificationService = require("../services/notification.service");
 
 const repo = new ValidationRequestsRepository();
 const questionSetsRepo = new QuestionSetsRepository();
-const usersRepo = new UsersRepository();
+const _usersRepo = new UsersRepository();
 
-function mapId(doc) { if (!doc) return doc; const { _id, __v, ...rest } = doc; return { id: String(_id || rest.id), ...rest }; }
+function mapId(doc) {
+  if (!doc) return doc;
+  const { _id, __v, ...rest } = doc;
+  return { id: String(_id || rest.id), ...rest };
+}
 
 module.exports = {
   // GET /validation-requests
   list: async (req, res, next) => {
     try {
-      const page = Math.max(1, parseInt(req.query.page || '1', 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      const { items, totalItems, totalPages } = await repo.paginate({}, { page, pageSize, sort: { createdAt: -1 } });
-      res.status(200).json({ items: (items || []).map(mapId), meta: { page, pageSize, total: totalItems, totalPages } });
-    } catch (e) { next(e); }
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+      const { items, totalItems, totalPages } = await repo.paginate(
+        {},
+        { page, pageSize, sort: { createdAt: -1 } }
+      );
+      res
+        .status(200)
+        .json({
+          items: (items || []).map(mapId),
+          meta: { page, pageSize, total: totalItems, totalPages },
+        });
+    } catch (e) {
+      next(e);
+    }
   },
-  
+
   // GET /validation-requests/:id
   get: async (req, res, next) => {
     try {
       const item = await repo.findById(req.params.id);
-      if (!item) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
+      if (!item) return res.status(404).json({ code: "NotFound", message: "Not found" });
       res.status(200).json(mapId(item));
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
-  
+
   // PATCH /validation-requests/:id
   update: async (req, res, next) => {
     try {
-      const allowed = {}; if (req.body.status) allowed.status = req.body.status; if (req.body.expertId) allowed.expertId = req.body.expertId;
+      const allowed = {};
+      if (req.body.status) allowed.status = req.body.status;
+      if (req.body.expertId) allowed.expertId = req.body.expertId;
       const updated = await repo.updateById(req.params.id, { $set: allowed }, { new: true });
-      if (!updated) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
-      
+      if (!updated) return res.status(404).json({ code: "NotFound", message: "Not found" });
+
       // Emit real-time notification if assigned to expert
-      if (req.body.expertId && req.body.status === 'Assigned') {
+      if (req.body.expertId && req.body.status === "Assigned") {
         notificationService.emitValidationAssigned(req.body.expertId, updated);
       }
-      
+
       res.status(200).json(mapId(updated));
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   },
 
   // PATCH /validation-requests/:id/complete
@@ -56,32 +76,32 @@ module.exports = {
 
       // 1. Validate request ownership
       const request = await repo.findById(requestId);
-      
+
       if (!request || request.expertId?.toString() !== expertId) {
         return res.status(404).json({
-          code: 'NotFound',
-          message: 'Validation request not found',
+          code: "NotFound",
+          message: "Validation request not found",
         });
       }
 
-      if (request.status !== 'Assigned') {
+      if (request.status !== "Assigned") {
         return res.status(400).json({
-          code: 'InvalidState',
-          message: 'Validation request is not in Assigned state',
+          code: "InvalidState",
+          message: "Validation request is not in Assigned state",
         });
       }
 
       // 2. Validate decision
-      if (!['Approved', 'Rejected'].includes(decision)) {
+      if (!["Approved", "Rejected"].includes(decision)) {
         return res.status(400).json({
-          code: 'ValidationError',
-          message: 'Decision must be Approved or Rejected',
+          code: "ValidationError",
+          message: "Decision must be Approved or Rejected",
         });
       }
 
       // 3. Update validation request
       const updateData = {
-        status: 'Completed',
+        status: "Completed",
         decision,
         feedback,
         completionTime: new Date(),
@@ -90,22 +110,20 @@ module.exports = {
       await repo.updateById(requestId, updateData);
 
       // 4. Update question set
-      const questionSet = await questionSetsRepo.findById(
-        request.setId.toString()
-      );
+      const questionSet = await questionSetsRepo.findById(request.setId.toString());
 
-      if (decision === 'Approved') {
+      if (decision === "Approved") {
         // Apply corrections if provided
         const finalQuestions = correctedQuestions || questionSet.questions;
 
         await questionSetsRepo.updateById(request.setId.toString(), {
-          status: 'Validated',
+          status: "Validated",
           questions: finalQuestions,
         });
       } else {
         // Rejected - back to Draft
         await questionSetsRepo.updateById(request.setId.toString(), {
-          status: 'Draft',
+          status: "Draft",
         });
       }
 

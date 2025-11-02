@@ -4,6 +4,8 @@
  * Phase 3.4 - Production Features
  */
 
+const logger = require("../utils/logger");
+
 class NotificationService {
   constructor() {
     this.io = null;
@@ -31,7 +33,7 @@ class NotificationService {
     this.io = app.get("io");
 
     if (!this.io) {
-      console.warn("Socket.IO not initialized. Real-time notifications disabled.");
+      logger.warn("Socket.IO not initialized. Real-time notifications disabled.");
     }
 
     return this.io;

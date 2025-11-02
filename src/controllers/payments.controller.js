@@ -1,7 +1,7 @@
 const QRCode = require("qrcode");
 const { sepay } = require("../config");
 const createSepayClient = require("../adapters/sepayClient");
-const SepayScanService = require("../services/payments/sepayScan.service");
+const SepayScanService = require("../services/sepayScan.service");
 
 // Simple dynamic QR generator for Sepay flow (placeholder without calling Sepay API)
 // Encodes a structured reference that includes userId, plan, amount.
@@ -14,9 +14,9 @@ module.exports = {
         return res.status(401).json({ code: "Unauthorized", message: "Missing user" });
       }
 
-  const amount = 2000; // VND
+      const amount = 2000; // VND
       const currency = "VND";
-  const plan = "standard"; // purchase content
+      const plan = "standard"; // purchase content
 
       // Reference string that we will also expect back in webhook payload (or be able to match by userId/plan/amount)
       const reference = `uid:${userId}|plan:${plan}|amt:${amount}|ts:${Date.now()}`;
@@ -42,13 +42,18 @@ module.exports = {
         // If account/bank not configured but API key exists, try provider API
         try {
           const client = createSepayClient(sepay);
-          const created = await client.createDynamicQR({ amount, currency, reference, description: plan });
+          const created = await client.createDynamicQR({
+            amount,
+            currency,
+            reference,
+            description: plan,
+          });
           if (created.qrDataUrl) {
             qrDataUrl = created.qrDataUrl;
           } else if (created.qrContent) {
             qrDataUrl = await QRCode.toDataURL(created.qrContent, { errorCorrectionLevel: "M" });
           }
-        } catch (_) {
+        } catch (_err) {
           // ignore and fallback to local render below
         }
       }
@@ -57,13 +62,15 @@ module.exports = {
         qrDataUrl = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M" });
       }
 
-      return res.status(200).json({ provider: "sepay", amount, currency, content: plan, reference, qrUrl, qrDataUrl });
+      return res
+        .status(200)
+        .json({ provider: "sepay", amount, currency, content: plan, reference, qrUrl, qrDataUrl });
     } catch (err) {
       return next(err);
     }
   },
   // Fetch raw transactions from Sepay user API (proxy) to help verify matching conditions
-  listSepayTransactions: async (req, res, next) => {
+  listSepayTransactions: async (req, res, _next) => {
     try {
       const client = createSepayClient(sepay);
       // Accept common filters from query/body; query takes precedence
@@ -95,7 +102,12 @@ module.exports = {
       const data = await client.listTransactions(params);
       // Normalize envelope for API consistency
       const items = Array.isArray(data?.transactions) ? data.transactions : [];
-      return res.status(200).json({ items, meta: { count: items.length, params, status: data?.status, error: data?.error } });
+      return res
+        .status(200)
+        .json({
+          items,
+          meta: { count: items.length, params, status: data?.status, error: data?.error },
+        });
     } catch (err) {
       // Map provider errors
       const status = Number(err?.response?.status) || 500;

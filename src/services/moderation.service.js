@@ -1,5 +1,6 @@
-const ContentFlagsRepository = require('../repositories/contentFlags.repository');
-const UsersRepository = require('../repositories/users.repository');
+const ContentFlagsRepository = require("../repositories/contentFlags.repository");
+const UsersRepository = require("../repositories/users.repository");
+const logger = require("../utils/logger");
 
 class ModerationService {
   constructor({ contentFlagsRepository, usersRepository }) {
@@ -18,14 +19,14 @@ class ModerationService {
       contentType,
       contentId,
       reportedBy,
-      status: { $in: ['Pending', 'UnderReview'] },
+      status: { $in: ["Pending", "UnderReview"] },
     });
 
     if (existing) {
-      throw Object.assign(
-        new Error('You have already flagged this content'),
-        { status: 409, code: 'AlreadyFlagged' }
-      );
+      throw Object.assign(new Error("You have already flagged this content"), {
+        status: 409,
+        code: "AlreadyFlagged",
+      });
     }
 
     const flag = await this.flagsRepo.create({
@@ -34,7 +35,7 @@ class ModerationService {
       reportedBy,
       reason,
       description,
-      status: 'Pending',
+      status: "Pending",
     });
 
     return this.mapFlagToDTO(flag);
@@ -54,7 +55,7 @@ class ModerationService {
       page,
       pageSize,
       sort: { createdAt: -1 },
-      populate: ['reportedBy', 'reviewedBy'],
+      populate: ["reportedBy", "reviewedBy"],
     });
 
     return {
@@ -77,7 +78,7 @@ class ModerationService {
     const flag = await this.flagsRepo.updateById(
       flagId,
       {
-        status: 'Resolved',
+        status: "Resolved",
         reviewedBy,
         reviewedAt: new Date(),
         action,
@@ -87,7 +88,7 @@ class ModerationService {
     );
 
     if (!flag) {
-      throw Object.assign(new Error('Flag not found'), { status: 404 });
+      throw Object.assign(new Error("Flag not found"), { status: 404 });
     }
 
     // Execute action
@@ -103,17 +104,17 @@ class ModerationService {
     const flag = await this.flagsRepo.updateById(
       flagId,
       {
-        status: 'Dismissed',
+        status: "Dismissed",
         reviewedBy,
         reviewedAt: new Date(),
-        action: 'None',
+        action: "None",
         notes,
       },
       { new: true }
     );
 
     if (!flag) {
-      throw Object.assign(new Error('Flag not found'), { status: 404 });
+      throw Object.assign(new Error("Flag not found"), { status: 404 });
     }
 
     return this.mapFlagToDTO(flag);
@@ -124,14 +125,14 @@ class ModerationService {
    */
   async executeAction(flag) {
     switch (flag.action) {
-      case 'ContentRemoved':
+      case "ContentRemoved":
         await this.removeContent(flag.contentType, flag.contentId);
         break;
-      case 'UserBanned':
+      case "UserBanned":
         // Get content owner and ban them
         await this.banContentOwner(flag.contentType, flag.contentId);
         break;
-      case 'Warning':
+      case "Warning":
         // Send warning email to content owner
         await this.sendWarning(flag.contentType, flag.contentId);
         break;
@@ -144,15 +145,15 @@ class ModerationService {
   async removeContent(contentType, contentId) {
     // Mark content as removed/inactive
     const modelMap = {
-      QuestionSet: require('../models/questionSet.model'),
-      Document: require('../models/document.model'),
+      QuestionSet: require("../models/questionSet.model"),
+      Document: require("../models/document.model"),
     };
 
     const Model = modelMap[contentType];
     if (!Model) return;
 
     await Model.findByIdAndUpdate(contentId, {
-      status: 'Removed',
+      status: "Removed",
       removedAt: new Date(),
     });
   }
@@ -160,8 +161,8 @@ class ModerationService {
   async banContentOwner(contentType, contentId) {
     // Find content owner and ban them
     const modelMap = {
-      QuestionSet: require('../models/questionSet.model'),
-      Document: require('../models/document.model'),
+      QuestionSet: require("../models/questionSet.model"),
+      Document: require("../models/document.model"),
     };
 
     const Model = modelMap[contentType];
@@ -174,15 +175,15 @@ class ModerationService {
     if (!ownerId) return;
 
     await this.usersRepo.updateById(ownerId, {
-      status: 'Banned',
+      status: "Banned",
       bannedAt: new Date(),
-      banReason: 'Content violation',
+      banReason: "Content violation",
     });
   }
 
   async sendWarning(contentType, contentId) {
     // TODO: Send warning email to content owner
-    console.log(`Warning sent for ${contentType}:${contentId}`);
+    logger.info({ contentType, contentId }, "Warning sent");
   }
 
   mapFlagToDTO(flag) {

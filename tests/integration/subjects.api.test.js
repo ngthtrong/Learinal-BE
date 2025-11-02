@@ -95,10 +95,7 @@ describe("Subjects API Integration Tests", () => {
       await createTestSubject(user._id, { subjectName: "My Subject" });
       await createTestSubject(otherUser._id, { subjectName: "Other Subject" });
 
-      const response = await request(app)
-        .get("/api/v1/subjects")
-        .set(authHeaders)
-        .expect(200);
+      const response = await request(app).get("/api/v1/subjects").set(authHeaders).expect(200);
 
       expect(response.body.items).toHaveLength(1);
       expect(response.body.items[0].subjectName).toBe("My Subject");
@@ -211,13 +208,10 @@ describe("Subjects API Integration Tests", () => {
     it("should delete subject for owner", async () => {
       const subject = await createTestSubject(user._id);
 
-      await request(app)
-        .delete(`/api/v1/subjects/${subject._id}`)
-        .set(authHeaders)
-        .expect(204);
+      await request(app).delete(`/api/v1/subjects/${subject._id}`).set(authHeaders).expect(204);
 
       // Verify subject is deleted
-      const response = await request(app)
+      const _response = await request(app)
         .get(`/api/v1/subjects/${subject._id}`)
         .set(authHeaders)
         .expect(404);

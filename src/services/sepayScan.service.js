@@ -1,6 +1,6 @@
-const createSepayClient = require("../../adapters/sepayClient");
-const { sepay } = require("../../config");
-const { UsersRepository } = require("../../repositories");
+const createSepayClient = require("../adapters/sepayClient");
+const { sepay } = require("../config");
+const { UsersRepository } = require("../repositories");
 
 function extractUserId(text) {
   if (!text || typeof text !== "string") return null;
@@ -26,8 +26,8 @@ class SepayScanService {
     const params = { limit: Math.min(Math.max(Number(limit) || 50, 1), 5000) };
     if (acc) params.account_number = acc;
 
-  const data = await this.client.listTransactions(params);
-  const txs = Array.isArray(data?.transactions) ? data.transactions : [];
+    const data = await this.client.listTransactions(params);
+    const txs = Array.isArray(data?.transactions) ? data.transactions : [];
 
     let matched = 0;
     let updated = 0;
@@ -35,7 +35,6 @@ class SepayScanService {
 
     for (const tx of txs) {
       const amountIn = Number(tx?.amount_in || 0);
-      const currency = "VND"; // Sepay userapi amounts are VND by context
       const content = String(tx?.transaction_content || "");
       if (amountIn !== 2000) continue;
       // Check for both SEVQR prefix and standard keyword

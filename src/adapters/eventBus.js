@@ -2,6 +2,7 @@
  * Simple in-memory event bus for pub/sub messaging
  * For production, consider Redis pub/sub or message queue
  */
+const logger = require("../utils/logger");
 class EventBus {
   constructor() {
     this.subscribers = new Map(); // topic -> Set of handlers
@@ -18,7 +19,7 @@ class EventBus {
       try {
         return Promise.resolve(handler(event));
       } catch (error) {
-        console.error(`EventBus handler error for topic ${topic}:`, error);
+        logger.error({ topic, error }, "EventBus handler error");
         return Promise.resolve();
       }
     });

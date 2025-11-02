@@ -35,6 +35,14 @@ const env = {
   requireEmailVerifiedForLogin:
     (process.env.REQUIRE_EMAIL_VERIFIED_FOR_LOGIN || "false").toLowerCase() === "true",
 
+  // Refresh token type flag
+  refreshOpaque: (process.env.REFRESH_OPAQUE || "false").toLowerCase() === "true",
+  absoluteRefreshLifetime: process.env.ABSOLUTE_REFRESH_LIFETIME || "",
+
+  // Session management
+  maxSessionsPerUser: parseInt(process.env.MAX_SESSIONS_PER_USER || "0", 10), // 0 = unlimited
+  pruneOldestSessions: (process.env.PRUNE_OLDEST_SESSIONS || "true").toLowerCase() === "true",
+
   // OAuth hardening
   oauthRequireState: (process.env.OAUTH_REQUIRE_STATE || "true").toLowerCase() === "true",
   oauthRequirePkce: (process.env.OAUTH_REQUIRE_PKCE || "false").toLowerCase() === "true",

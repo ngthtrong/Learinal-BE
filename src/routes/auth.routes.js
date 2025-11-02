@@ -1,11 +1,11 @@
 const express = require("express");
 const controller = require("../controllers/auth.controller");
-const rateLimit = require("../middleware/rateLimit");
 const inputValidation = require("../middleware/inputValidation");
 const { authLimiter } = require("../config/rateLimits");
 const Joi = require("joi");
 const { env } = require("../config");
 const { randomUUID } = require("crypto");
+const authenticateJWT = require("../middleware/authenticateJWT");
 
 const router = express.Router();
 
@@ -26,7 +26,9 @@ router.post(
 );
 
 // GET /auth/state - Issue OAuth state and set HttpOnly cookie for CSRF protection
-router.get("/state", authLimiter, (req, res) => {
+// Note: do not rate-limit this lightly-used endpoint to avoid 429 during OAuth initiation,
+// especially in development where pages may reload.
+router.get("/state", (req, res) => {
   const manual = String(req.query.manual || "").toLowerCase();
   const base = randomUUID();
   const state = manual === "1" || manual === "true" ? `${base}|manual` : base;
@@ -85,12 +87,7 @@ const resetSchema = Joi.object({
   }),
 }).unknown(true);
 
-router.post(
-  "/reset-password",
-  authLimiter,
-  inputValidation(resetSchema),
-  controller.resetPassword
-);
+router.post("/reset-password", authLimiter, inputValidation(resetSchema), controller.resetPassword);
 
 // POST /auth/verify-email - Verify email with token
 const verifySchema = Joi.object({
@@ -99,12 +96,7 @@ const verifySchema = Joi.object({
   }),
 }).unknown(true);
 
-router.post(
-  "/verify-email",
-  authLimiter,
-  inputValidation(verifySchema),
-  controller.verifyEmail
-);
+router.post("/verify-email", authLimiter, inputValidation(verifySchema), controller.verifyEmail);
 
 // GET /auth/verify-email?token=... - Convenience endpoint for email links
 // This allows clicking a link directly without a frontend, useful in dev or simple setups.
@@ -137,26 +129,21 @@ const exchangeSchema = Joi.object({
   body: Joi.object({ code: Joi.string().optional() }),
 }).unknown(true);
 
-router.post(
-  "/exchange",
-  authLimiter,
-  inputValidation(exchangeSchema),
-  controller.exchange
-);
+router.post("/exchange", authLimiter, inputValidation(exchangeSchema), controller.exchange);
 
 // POST /auth/refresh - Refresh access token (stub/real)
 const refreshSchema = Joi.object({
   body: Joi.object({ refreshToken: Joi.string().optional() }),
 }).unknown(true);
 
-router.post(
-  "/refresh",
-  authLimiter,
-  inputValidation(refreshSchema),
-  controller.refresh
-);
+router.post("/refresh", authLimiter, inputValidation(refreshSchema), controller.refresh);
+
+// Session management
+router.get("/sessions", authLimiter, authenticateJWT, controller.sessions);
+router.post("/sessions/:id/revoke", authLimiter, authenticateJWT, controller.revokeSession);
 
 // GET /auth/config - Public non-secret OAuth config for FE testing
+// Avoid strict auth rate-limit here; it's a harmless metadata endpoint.
 router.get("/config", (req, res) => {
   return res.status(200).json({
     clientId: env.googleClientId || "",

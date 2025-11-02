@@ -1,4 +1,4 @@
-const { randomUUID } = require("crypto");
+const { randomUUID, randomBytes } = require("crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { env, email: emailCfg } = require("../config");
@@ -13,6 +13,19 @@ const { verifyGoogleIdToken } = require("../utils/oidc");
 const usersRepo = new UsersRepository();
 const emailClient = new EmailClient(emailCfg);
 const refreshRepo = new RefreshTokensRepository();
+
+function parseDurationMs(input) {
+  if (!input) return 0;
+  if (typeof input === "number") return input;
+  const s = String(input).trim();
+  const m = /^([0-9]+)\s*([smhd])?$/i.exec(s);
+  if (!m) return Number(s) || 0;
+  const val = Number(m[1]);
+  const unit = (m[2] || "s").toLowerCase();
+  const mult =
+    unit === "s" ? 1000 : unit === "m" ? 60 * 1000 : unit === "h" ? 3600 * 1000 : 24 * 3600 * 1000;
+  return val * mult;
+}
 
 function buildRealTokens(user, { jti } = {}) {
   const payload = {
@@ -47,21 +60,67 @@ function buildRealTokens(user, { jti } = {}) {
   };
 }
 
-async function issueTokens(_mode, user, { req } = {}) {
+async function issueTokens(_mode, user, { req, jti: forcedJti, familyId, parentJti } = {}) {
   // real: create refresh with jti and store it for rotation/revoke
-  const jti = randomUUID();
+  const jti = forcedJti || randomUUID();
   const body = buildRealTokens(user, { jti });
   try {
-    const decoded = jwt.decode(body.refreshToken);
-    const expSec =
-      decoded && decoded.exp ? decoded.exp : Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
-    const expiresAt = new Date(expSec * 1000);
+    let expiresAt;
+    if (env.refreshOpaque) {
+      const ms = parseDurationMs(env.jwtRefreshExpiresIn || "7d");
+      expiresAt = new Date(Date.now() + (ms || 7 * 24 * 3600 * 1000));
+    } else {
+      const decoded = jwt.decode(body.refreshToken);
+      const expSec =
+        decoded && decoded.exp ? decoded.exp : Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+      expiresAt = new Date(expSec * 1000);
+    }
+    // Enforce concurrent session limit if configured
+    try {
+      const max = parseInt(env.maxSessionsPerUser || 0, 10);
+      if (max > 0) {
+        const current = await refreshRepo.countActiveByUser(user.id);
+        if (current >= max) {
+          if (env.pruneOldestSessions) {
+            const need = current - (max - 1);
+            if (need > 0) {
+              const oldest = await refreshRepo.findOldestActiveByUser(user.id, need);
+              const ids = oldest.map((d) => d._id);
+              if (ids.length) await refreshRepo.revokeByIds(ids);
+            }
+          } else {
+            // Refuse to create a new session
+            const err = new Error("Session limit reached");
+            err.code = "SessionLimit";
+            throw err;
+          }
+        }
+      }
+    } catch (e) {
+      if (e?.code === "SessionLimit") throw e;
+    }
+    const deviceId = req?.headers?.["x-device-id"] || null;
+    let tokenType = "jwt";
+    let tokenHash = null;
+    if (env.refreshOpaque) {
+      const secret = randomBytes(32).toString("base64url");
+      const opaque = `${jti}.${secret}`;
+      tokenHash = await bcrypt.hash(secret, 12);
+      tokenType = "opaque";
+      body.refreshToken = opaque;
+    }
     await refreshRepo.createRecord({
       userId: user.id,
       jti,
       userAgent: req?.headers?.["user-agent"] || null,
       ip: req?.ip || null,
+      deviceId,
       expiresAt,
+      familyId: familyId || jti,
+      parentJti: parentJti || null,
+      tokenType,
+      tokenHash,
+      familyIssuedAt: new Date(),
     });
   } catch {}
   return body;
@@ -81,6 +140,9 @@ function setRefreshCookie(res, refreshToken) {
     const decoded = jwt.decode(refreshToken);
     if (decoded && decoded.exp) {
       opts.expires = new Date(decoded.exp * 1000);
+    } else {
+      const ms = parseDurationMs(env.jwtRefreshExpiresIn || "7d");
+      if (ms > 0) opts.expires = new Date(Date.now() + ms);
     }
     res.cookie("rt", refreshToken, opts);
     // Best-effort: clear any legacy root-path cookie to avoid duplicates
@@ -147,6 +209,46 @@ module.exports = {
       return res.status(200).json({
         message: "If the email exists, a reset link has been sent.",
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+  // GET /auth/sessions - list active sessions of current user
+  sessions: async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ code: "Unauthorized", message: "Auth required" });
+      const items = await refreshRepo.listActiveByUser(userId);
+      const mapped = items.map((t) => ({
+        id: String(t._id || t.id),
+        familyId: t.familyId || t.jti,
+        deviceId: t.deviceId || null,
+        userAgent: t.userAgent || null,
+        ip: t.ip || null,
+        createdAt: t.createdAt,
+        expiresAt: t.expiresAt,
+        rotatedAt: t.rotatedAt || null,
+        reusedAt: t.reusedAt || null,
+      }));
+      return res.status(200).json({ items: mapped });
+    } catch (err) {
+      next(err);
+    }
+  },
+  // POST /auth/sessions/:id/revoke - revoke a specific session (refresh token)
+  revokeSession: async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+      const id = req.params?.id;
+      if (!userId) return res.status(401).json({ code: "Unauthorized", message: "Auth required" });
+      if (!id) return res.status(400).json({ code: "ValidationError", message: "Missing id" });
+      // Ensure the token belongs to the current user
+      const doc = await refreshRepo.findOne({ _id: id });
+      if (!doc || String(doc.userId) !== String(userId)) {
+        return res.status(404).json({ code: "NotFound", message: "Session not found" });
+      }
+      await refreshRepo.revokeById(id);
+      return res.status(204).send();
     } catch (err) {
       next(err);
     }
@@ -292,26 +394,26 @@ module.exports = {
           expiresIn: env.emailVerifyExpiresIn,
         });
         const link = `${env.appBaseUrl}/verify-email?token=${encodeURIComponent(token)}`;
-        
+
         // Try to enqueue email; if queue not available, send directly
         try {
           await enqueueEmail({
             to: created.email,
             subject: "Verify your email - Learinal",
-            templateId: null, // Temporarily disable template for testing
-            variables: { fullName: created.fullName, link }
+            templateId: emailCfg.verifyTemplateId,
+            variables: { fullName: created.fullName, link },
           });
-          logger.info({ email: created.email }, 'Verification email queued');
+          logger.info({ email: created.email }, "Verification email queued");
         } catch (queueError) {
           // Fallback to direct send if queue is not available
-          logger.warn({ error: queueError.message }, 'Queue not available, sending email directly');
+          logger.warn({ error: queueError.message }, "Queue not available, sending email directly");
           await emailClient.send(
             created.email,
             "Verify your email - Learinal",
             null, // Temporarily disable template for testing
             { fullName: created.fullName, link }
           );
-          logger.info({ email: created.email }, 'Verification email sent directly');
+          logger.info({ email: created.email }, "Verification email sent directly");
         }
       } catch (e) {
         // In non-production, surface a concise reason to the logs to aid setup
@@ -487,50 +589,166 @@ module.exports = {
       if (!refreshToken) {
         return res.status(400).json({ code: "ValidationError", message: "Missing refreshToken" });
       }
-      let decoded;
-      try {
-        const verifyOpts = {
-          algorithms: [env.jwtAlgorithm || "HS256"],
-        };
-        if (env.jwtIssuer) verifyOpts.issuer = env.jwtIssuer;
-        if (env.jwtAudience) verifyOpts.audience = env.jwtAudience;
-        decoded = jwt.verify(refreshToken, env.jwtRefreshSecret, verifyOpts);
-      } catch {
-        return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
-      }
-      const sub = decoded.sub;
-      const jti = decoded.jti;
-
-      if (jti) {
-        // Stronger validation: ensure the token exists, not revoked/expired, and belongs to the same user
+      if (env.refreshOpaque) {
+        const parts = String(refreshToken).split(".");
+        if (parts.length !== 2) {
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
+        }
+        const jti = parts[0];
+        const secret = parts[1];
         const rec = await refreshRepo.findByJti(jti);
         const now = Date.now();
-        const belongsToUser = rec?.userId && String(rec.userId) === String(sub);
-        const notRevoked = !rec?.revokedAt;
-        const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
-        if (!rec || !belongsToUser || !notRevoked || !notExpired) {
-          return res.status(401).json({
-            code: "Unauthorized",
-            message: "Refresh token expired, revoked, or invalid",
-          });
+        if (!rec || rec.tokenType !== "opaque" || !rec.tokenHash) {
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
         }
-        await refreshRepo.revokeByJti(jti);
-        const user = await usersRepo.findByUserId(sub);
-        const body = await issueTokens("real", user, { req });
-        setRefreshCookie(res, body.refreshToken);
-        const { refreshToken: _omitRt3, ...refreshResp } = body;
-        return res.status(200).json(refreshResp);
+        const user = await usersRepo.findByUserId(rec.userId);
+        if (!user)
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid token owner" });
+        const notRevoked = !rec.revokedAt;
+        const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
+        const okSecret = await bcrypt.compare(secret, rec.tokenHash);
+        if (!notRevoked || !notExpired || !okSecret) {
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
+        }
+        // Absolute lifetime
+        try {
+          const capMs = parseDurationMs(env.absoluteRefreshLifetime || "");
+          const familyStart = rec.familyIssuedAt || rec.createdAt;
+          if (capMs > 0 && familyStart && Date.now() - new Date(familyStart).getTime() > capMs) {
+            await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti).catch(() => {});
+            return res
+              .status(401)
+              .json({ code: "Unauthorized", message: "Session expired, please login again" });
+          }
+        } catch {}
+        if (rec.rotatedAt) {
+          try {
+            await refreshRepo.markReused(jti);
+            await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti);
+          } catch {}
+          return res
+            .status(401)
+            .json({
+              code: "Unauthorized",
+              message: "Refresh token reuse detected. Please login again.",
+            });
+        }
+        // Rotate atomically
+        const newJti = randomUUID();
+        const secret2 = randomBytes(32).toString("base64url");
+        const tokenHash2 = await bcrypt.hash(secret2, 12);
+        const ms = parseDurationMs(env.jwtRefreshExpiresIn || "7d");
+        const expiresAt = new Date(Date.now() + (ms || 7 * 24 * 3600 * 1000));
+        const deviceId = req?.headers?.["x-device-id"] || null;
+        const familyId = rec.familyId || rec.jti;
+        const famIssued = rec.familyIssuedAt || rec.createdAt || new Date();
+        await refreshRepo.doRotationAtomic(jti, {
+          userId: rec.userId,
+          jti: newJti,
+          userAgent: req?.headers?.["user-agent"] || null,
+          ip: req?.ip || null,
+          deviceId,
+          expiresAt,
+          familyId,
+          parentJti: rec.jti,
+          tokenType: "opaque",
+          tokenHash: tokenHash2,
+          familyIssuedAt: famIssued,
+        });
+        // Issue new access token using newJti
+        const tokens = buildRealTokens(user, { jti: newJti });
+        const newOpaque = `${newJti}.${secret2}`;
+        tokens.refreshToken = newOpaque;
+        setRefreshCookie(res, newOpaque);
+        const { refreshToken: _omitRt, ...resp } = tokens;
+        return res.status(200).json(resp);
+      } else {
+        let decoded;
+        try {
+          const verifyOpts = {
+            algorithms: [env.jwtAlgorithm || "HS256"],
+          };
+          if (env.jwtIssuer) verifyOpts.issuer = env.jwtIssuer;
+          if (env.jwtAudience) verifyOpts.audience = env.jwtAudience;
+          decoded = jwt.verify(refreshToken, env.jwtRefreshSecret, verifyOpts);
+        } catch {
+          return res.status(401).json({ code: "Unauthorized", message: "Invalid refresh token" });
+        }
+        const sub = decoded.sub;
+        const jti = decoded.jti;
+        if (jti) {
+          const rec = await refreshRepo.findByJti(jti);
+          const now = Date.now();
+          const belongsToUser = rec?.userId && String(rec.userId) === String(sub);
+          const notRevoked = !rec?.revokedAt;
+          const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
+          if (!rec || !belongsToUser || !notRevoked || !notExpired) {
+            return res
+              .status(401)
+              .json({
+                code: "Unauthorized",
+                message: "Refresh token expired, revoked, or invalid",
+              });
+          }
+          // Absolute lifetime
+          try {
+            const capMs = parseDurationMs(env.absoluteRefreshLifetime || "");
+            const familyStart = rec.familyIssuedAt || rec.createdAt;
+            if (capMs > 0 && familyStart && Date.now() - new Date(familyStart).getTime() > capMs) {
+              await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti).catch(() => {});
+              return res
+                .status(401)
+                .json({ code: "Unauthorized", message: "Session expired, please login again" });
+            }
+          } catch {}
+          if (rec.rotatedAt) {
+            try {
+              await refreshRepo.markReused(jti);
+              await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti);
+            } catch {}
+            return res
+              .status(401)
+              .json({
+                code: "Unauthorized",
+                message: "Refresh token reuse detected. Please login again.",
+              });
+          }
+          const user = await usersRepo.findByUserId(sub);
+          const newJti = randomUUID();
+          const tokens = buildRealTokens(user, { jti: newJti });
+          const decodedNew = jwt.decode(tokens.refreshToken);
+          const expSecNew = decodedNew?.exp || Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+          const expiresAt = new Date(expSecNew * 1000);
+          const deviceId = req?.headers?.["x-device-id"] || null;
+          const familyId = rec.familyId || rec.jti;
+          const famIssued = rec.familyIssuedAt || rec.createdAt || new Date();
+          await refreshRepo.doRotationAtomic(jti, {
+            userId: rec.userId,
+            jti: newJti,
+            userAgent: req?.headers?.["user-agent"] || null,
+            ip: req?.ip || null,
+            deviceId,
+            expiresAt,
+            familyId,
+            parentJti: rec.jti,
+            tokenType: "jwt",
+            tokenHash: null,
+            familyIssuedAt: famIssued,
+          });
+          setRefreshCookie(res, tokens.refreshToken);
+          const { refreshToken: _omitRt3, ...refreshResp } = tokens;
+          return res.status(200).json(refreshResp);
+        }
+        // Legacy no-jti
+        const payload = { sub, role: "Learner" };
+        const accessToken = jwt.sign(payload, env.jwtSecret, {
+          expiresIn: env.jwtExpiresIn,
+          algorithm: env.jwtAlgorithm || "HS256",
+          ...(env.jwtIssuer ? { issuer: env.jwtIssuer } : {}),
+          ...(env.jwtAudience ? { audience: env.jwtAudience } : {}),
+        });
+        return res.status(200).json({ accessToken, tokenType: "Bearer", expiresIn: 3600 });
       }
-
-      // Legacy: if no jti (older JWT style), just issue new access token
-      const payload = { sub, role: "Learner" };
-      const accessToken = jwt.sign(payload, env.jwtSecret, {
-        expiresIn: env.jwtExpiresIn,
-        algorithm: env.jwtAlgorithm || "HS256",
-        ...(env.jwtIssuer ? { issuer: env.jwtIssuer } : {}),
-        ...(env.jwtAudience ? { audience: env.jwtAudience } : {}),
-      });
-      return res.status(200).json({ accessToken, tokenType: "Bearer", expiresIn: 3600 });
     } catch (err) {
       next(err);
     }

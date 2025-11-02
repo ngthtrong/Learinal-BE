@@ -23,18 +23,16 @@ function initSentry(app) {
     dsn: env.SENTRY_DSN,
     environment: env.NODE_ENV,
     release: process.env.npm_package_version,
-    
+
     // Performance Monitoring
     tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0, // 10% in prod, 100% in dev
-    
+
     // Profiling
     profilesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
-    integrations: [
-      new ProfilingIntegration(),
-    ],
+    integrations: [new ProfilingIntegration()],
 
     // Filter sensitive data
-    beforeSend(event, hint) {
+    beforeSend(event, _hint) {
       // Don't send errors in development
       if (env.NODE_ENV === "development") {
         return null;
@@ -86,15 +84,17 @@ function sentryErrorHandler(app) {
     return;
   }
 
-  app.use(Sentry.Handlers.errorHandler({
-    shouldHandleError(error) {
-      // Capture 4xx and 5xx errors
-      if (error.status >= 400) {
-        return true;
-      }
-      return false;
-    },
-  }));
+  app.use(
+    Sentry.Handlers.errorHandler({
+      shouldHandleError(error) {
+        // Capture 4xx and 5xx errors
+        if (error.status >= 400) {
+          return true;
+        }
+        return false;
+      },
+    })
+  );
 }
 
 /**

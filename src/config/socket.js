@@ -7,6 +7,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
+const logger = require("../utils/logger");
 
 /**
  * Initialize Socket.IO server
@@ -52,7 +53,7 @@ function initializeSocketIO(httpServer) {
 
   // Connection handler
   io.on("connection", (socket) => {
-    console.log(`✓ User connected: ${socket.userId} (${socket.id})`);
+    logger.info({ userId: socket.userId, socketId: socket.id }, "User connected");
 
     // Join user's personal room
     socket.join(`user:${socket.userId}`);
@@ -70,11 +71,11 @@ function initializeSocketIO(httpServer) {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log(`✗ User disconnected: ${socket.userId} (${reason})`);
+      logger.info({ userId: socket.userId, reason }, "User disconnected");
     });
 
     socket.on("error", (error) => {
-      console.error(`Socket error for user ${socket.userId}:`, error);
+      logger.error({ userId: socket.userId, error }, "Socket error");
     });
 
     // Send welcome message

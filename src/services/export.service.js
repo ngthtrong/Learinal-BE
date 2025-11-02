@@ -5,8 +5,6 @@
  */
 
 const QuestionSet = require("../models/questionSet.model");
-const User = require("../models/user.model");
-const Subject = require("../models/subject.model");
 const { AppError } = require("../utils/appError");
 
 class ExportService {
@@ -17,10 +15,7 @@ class ExportService {
    * @returns {Promise<Object>} JSON representation of question set
    */
   async exportToJSON(questionSetId, userId) {
-    const questionSet = await this._getQuestionSetWithAccess(
-      questionSetId,
-      userId
-    );
+    const questionSet = await this._getQuestionSetWithAccess(questionSetId, userId);
 
     // Populate related data
     await questionSet.populate("createdBy", "fullName email");
@@ -74,10 +69,7 @@ class ExportService {
    * @returns {Promise<string>} CSV string
    */
   async exportToCSV(questionSetId, userId) {
-    const questionSet = await this._getQuestionSetWithAccess(
-      questionSetId,
-      userId
-    );
+    const questionSet = await this._getQuestionSetWithAccess(questionSetId, userId);
 
     // Build CSV manually (simple approach)
     const rows = [];
@@ -133,10 +125,7 @@ class ExportService {
    * @returns {Promise<Object>} PDF generation data
    */
   async exportToPDF(questionSetId, userId) {
-    const questionSet = await this._getQuestionSetWithAccess(
-      questionSetId,
-      userId
-    );
+    const questionSet = await this._getQuestionSetWithAccess(questionSetId, userId);
 
     await questionSet.populate("createdBy", "fullName");
     await questionSet.populate("subject", "name");
@@ -226,10 +215,7 @@ class ExportService {
     const isPublished = questionSet.status === "published";
 
     if (!isOwner && !isPublished) {
-      throw new AppError(
-        "You don't have permission to export this question set",
-        403
-      );
+      throw new AppError("You don't have permission to export this question set", 403);
     }
 
     return questionSet;
@@ -241,14 +227,14 @@ class ExportService {
    */
   _escapeCSV(str) {
     if (!str) return "";
-    
+
     const stringValue = String(str);
-    
+
     // If contains comma, quote, or newline, wrap in quotes and escape quotes
     if (stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")) {
       return `"${stringValue.replace(/"/g, '""')}"`;
     }
-    
+
     return stringValue;
   }
 }

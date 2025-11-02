@@ -1,13 +1,13 @@
-const QuestionSet = require('../models/questionSet.model');
-const Document = require('../models/document.model');
-const Subject = require('../models/subject.model');
+const QuestionSet = require("../models/questionSet.model");
+const Document = require("../models/document.model");
+const Subject = require("../models/subject.model");
 
 class SearchService {
   /**
    * Global search across question sets, documents, and subjects
    */
   async globalSearch(query, options = {}) {
-    const { userId, page = 1, pageSize = 20 } = options;
+    const { userId, page: _page = 1, pageSize = 20 } = options;
     const limit = Math.min(pageSize, 50); // Max 50 per type
 
     // Search in parallel
@@ -33,8 +33,8 @@ class SearchService {
 
     const searchQuery = {
       $or: [
-        { title: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
+        { title: { $regex: query, $options: "i" } },
+        { description: { $regex: query, $options: "i" } },
       ],
     };
 
@@ -42,22 +42,19 @@ class SearchService {
     if (userId) {
       searchQuery.$and = [
         {
-          $or: [
-            { creatorId: userId },
-            { isShared: true, status: 'Published' },
-          ],
+          $or: [{ creatorId: userId }, { isShared: true, status: "Published" }],
         },
       ];
     }
 
     const sets = await QuestionSet.find(searchQuery)
       .limit(limit)
-      .select('title description status difficulty creatorId createdAt')
+      .select("title description status difficulty creatorId createdAt")
       .lean();
 
     return sets.map((set) => ({
       id: set._id.toString(),
-      type: 'QuestionSet',
+      type: "QuestionSet",
       title: set.title,
       description: set.description,
       status: set.status,
@@ -74,9 +71,9 @@ class SearchService {
 
     const searchQuery = {
       $or: [
-        { fileName: { $regex: query, $options: 'i' } },
-        { summaryShort: { $regex: query, $options: 'i' } },
-        { summaryFull: { $regex: query, $options: 'i' } },
+        { fileName: { $regex: query, $options: "i" } },
+        { summaryShort: { $regex: query, $options: "i" } },
+        { summaryFull: { $regex: query, $options: "i" } },
       ],
     };
 
@@ -86,12 +83,12 @@ class SearchService {
 
     const docs = await Document.find(searchQuery)
       .limit(limit)
-      .select('fileName mimeType status summaryShort ownerId createdAt')
+      .select("fileName mimeType status summaryShort ownerId createdAt")
       .lean();
 
     return docs.map((doc) => ({
       id: doc._id.toString(),
-      type: 'Document',
+      type: "Document",
       title: doc.fileName,
       description: doc.summaryShort,
       status: doc.status,
@@ -107,7 +104,7 @@ class SearchService {
     const { userId, limit = 20 } = options;
 
     const searchQuery = {
-      subjectName: { $regex: query, $options: 'i' },
+      subjectName: { $regex: query, $options: "i" },
     };
 
     if (userId) {
@@ -116,12 +113,12 @@ class SearchService {
 
     const subjects = await Subject.find(searchQuery)
       .limit(limit)
-      .select('subjectName ownerId createdAt')
+      .select("subjectName ownerId createdAt")
       .lean();
 
     return subjects.map((subject) => ({
       id: subject._id.toString(),
-      type: 'Subject',
+      type: "Subject",
       title: subject.subjectName,
       createdAt: subject.createdAt,
     }));
@@ -164,15 +161,11 @@ class SearchService {
 
     // Shared filter
     if (filters.isShared !== undefined) {
-      query.isShared = filters.isShared === 'true' || filters.isShared === true;
+      query.isShared = filters.isShared === "true" || filters.isShared === true;
     }
 
     const [results, total] = await Promise.all([
-      QuestionSet.find(query)
-        .skip(skip)
-        .limit(pageSize)
-        .sort({ createdAt: -1 })
-        .lean(),
+      QuestionSet.find(query).skip(skip).limit(pageSize).sort({ createdAt: -1 }).lean(),
       QuestionSet.countDocuments(query),
     ]);
 

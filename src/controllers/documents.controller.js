@@ -6,7 +6,7 @@ const { enqueueDocumentIngestion } = require("../adapters/queue");
 const fs = require("fs");
 
 const docsRepo = new DocumentsRepository();
-const storage = new StorageClient(env);
+const _storage = new StorageClient(env);
 const logger = require("../utils/logger");
 
 function mapId(doc) {
@@ -19,16 +19,16 @@ module.exports = {
   // POST /documents (multipart/form-data with file)
   create: async (req, res, next) => {
     let tempFilePath = null;
-    
+
     try {
       const user = req.user;
       if (!req.file) {
         return res.status(400).json({ code: "ValidationError", message: "Missing file" });
       }
-      
+
       // Store temp file path for cleanup on error
       tempFilePath = req.file.path;
-      
+
       const allowedExt = [".pdf", ".docx", ".txt"];
       const ext = req.file.originalname.slice(req.file.originalname.lastIndexOf(".")).toLowerCase();
       if (!allowedExt.includes(ext)) {
@@ -59,9 +59,9 @@ module.exports = {
       const created = await docsRepo.create(toCreate);
 
       // Kick off ingestion + summary chain (prefer queue only when explicitly enabled)
-      const jobPayload = { 
+      const jobPayload = {
         documentId: String(created._id || created.id),
-        tempFilePath: tempFilePath // Pass temp file path to job
+        tempFilePath: tempFilePath, // Pass temp file path to job
       };
       const useQueue =
         (process.env.USE_QUEUE === "true" || process.env.USE_QUEUE === "1") &&
