@@ -176,14 +176,8 @@ module.exports = {
           env.passwordResetSecret,
           { expiresIn: env.passwordResetExpiresIn }
         );
-        // Build reset URL using only the origin of APP_BASE_URL to avoid API path fragments
-        // Example: if APP_BASE_URL = http://localhost:3001/api/v1/auth, origin = http://localhost:3001
-        let linkBase = env.appBaseUrl;
-        try {
-          const u = new URL(env.appBaseUrl);
-          linkBase = `${u.protocol}//${u.host}`;
-        } catch {}
-        const link = `${linkBase}/reset-password?token=${encodeURIComponent(token)}`;
+        // Build reset URL to frontend app; FE now owns the reset-password route
+        const link = `${env.appBaseUrl}/reset-password?token=${encodeURIComponent(token)}`;
         try {
           await emailClient.send(
             user.email,
@@ -626,12 +620,10 @@ module.exports = {
             await refreshRepo.markReused(jti);
             await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti);
           } catch {}
-          return res
-            .status(401)
-            .json({
-              code: "Unauthorized",
-              message: "Refresh token reuse detected. Please login again.",
-            });
+          return res.status(401).json({
+            code: "Unauthorized",
+            message: "Refresh token reuse detected. Please login again.",
+          });
         }
         // Rotate atomically
         const newJti = randomUUID();
@@ -683,12 +675,10 @@ module.exports = {
           const notRevoked = !rec?.revokedAt;
           const notExpired = rec?.expiresAt && new Date(rec.expiresAt).getTime() > now;
           if (!rec || !belongsToUser || !notRevoked || !notExpired) {
-            return res
-              .status(401)
-              .json({
-                code: "Unauthorized",
-                message: "Refresh token expired, revoked, or invalid",
-              });
+            return res.status(401).json({
+              code: "Unauthorized",
+              message: "Refresh token expired, revoked, or invalid",
+            });
           }
           // Absolute lifetime
           try {
@@ -706,12 +696,10 @@ module.exports = {
               await refreshRepo.markReused(jti);
               await refreshRepo.revokeFamily(rec.userId, rec.familyId || rec.jti);
             } catch {}
-            return res
-              .status(401)
-              .json({
-                code: "Unauthorized",
-                message: "Refresh token reuse detected. Please login again.",
-              });
+            return res.status(401).json({
+              code: "Unauthorized",
+              message: "Refresh token reuse detected. Please login again.",
+            });
           }
           const user = await usersRepo.findByUserId(sub);
           const newJti = randomUUID();

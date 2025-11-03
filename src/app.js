@@ -2,8 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
-const { env } = require("./config");
-const path = require("path");
 const routes = require("./routes");
 const healthRoutes = require("./routes/health.routes");
 const requestId = require("./middleware/requestId");
@@ -72,26 +70,6 @@ app.use(generalLimiter);
 
 // Public health endpoint (no auth required)
 app.use("/health", healthRoutes);
-
-// Serve minimal static frontend for testing password reset links
-const publicDir = path.join(__dirname, "..", "public");
-app.use(express.static(publicDir));
-app.get("/reset-password", (req, res) => {
-  res.sendFile(path.join(publicDir, "reset-password.html"));
-});
-
-// Serve simple OAuth testing pages only outside production
-if (env.nodeEnv !== "production") {
-  app.get("/oauth", (req, res) => {
-    res.sendFile(path.join(publicDir, "oauth.html"));
-  });
-
-  // Google will redirect to this path with ?code=...
-  // Ensure GOOGLE_REDIRECT_URI matches http://localhost:<PORT>/oauth/google/callback for local testing
-  app.get("/oauth/google/callback", (req, res) => {
-    res.sendFile(path.join(publicDir, "oauth-callback.html"));
-  });
-}
 
 // Base URL: /api/v1
 app.use("/api/v1", routes);
