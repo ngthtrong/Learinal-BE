@@ -27,6 +27,15 @@ const patchSchema = Joi.object({
 	}),
 }).unknown(true);
 
+const documentsQuerySchema = Joi.object({
+	params: Joi.object({ subjectId: Joi.string().required() }),
+	query: Joi.object({
+		page: Joi.number().integer().min(1).optional(),
+		pageSize: Joi.number().integer().min(1).max(100).optional(),
+		status: Joi.string().valid('Uploading', 'Processing', 'Completed', 'Error').optional(),
+	}),
+}).unknown(true);
+
 // GET /subjects
 router.get('/', rateLimit({ limit: 60 }), authenticateJWT, cacheResponse({ ttl: CacheTTL.SUBJECT }), controller.list);
 
@@ -41,5 +50,15 @@ router.patch('/:id', rateLimit({ limit: 60 }), authenticateJWT, inputValidation(
 
 // DELETE /subjects/:id
 router.delete('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.remove);
+
+// GET /subjects/:subjectId/documents - Get all documents for a subject
+router.get(
+	'/:subjectId/documents',
+	rateLimit({ limit: 60 }),
+	authenticateJWT,
+	inputValidation(documentsQuerySchema),
+	cacheResponse({ ttl: CacheTTL.DOCUMENT }),
+	require('../controllers/documents.controller').listBySubject
+);
 
 module.exports = router;

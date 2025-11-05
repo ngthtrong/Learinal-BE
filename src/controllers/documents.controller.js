@@ -170,4 +170,45 @@ module.exports = {
       next(e);
     }
   },
+
+  // GET /subjects/:subjectId/documents
+  listBySubject: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const { subjectId } = req.params;
+      
+      // Validate và parse pagination params
+      const page = Math.max(1, parseInt(req.query.page || '1', 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
+      
+      // Filter: chỉ lấy documents của user hiện tại và subject được chỉ định
+      const filter = {
+        subjectId,
+        ownerId: user.id,
+      };
+      
+      // Optional status filter
+      if (req.query.status) {
+        filter.status = req.query.status;
+      }
+      
+      const result = await docsRepo.paginate(filter, {
+        page,
+        pageSize,
+        sort: { uploadedAt: -1 },
+      });
+      
+      return res.status(200).json({
+        items: result.items.map(mapId),
+        meta: {
+          page: result.meta.page,
+          pageSize: result.meta.pageSize,
+          total: result.meta.totalItems,
+          totalPages: result.meta.totalPages,
+        },
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
 };
