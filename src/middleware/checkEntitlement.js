@@ -2,12 +2,32 @@
  * Middleware to check user's subscription entitlements
  */
 
+const User = require('../models/user.model');
+const SubscriptionPlan = require('../models/subscriptionPlan.model');
+
 async function checkQuestionGenerationLimit(req, res, next) {
   try {
     const { userSubscriptionsService, questionSetsRepository } = req.app.locals;
     
-    // Get active subscription
-    const subscription = await userSubscriptionsService.getActiveSubscription(req.user.userId);
+    // Get active subscription from UserSubscription collection
+    let subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
+    
+    // Fallback: Check User model if no UserSubscription found
+    if (!subscription || !subscription.plan) {
+      const user = await User.findById(req.user.id).lean();
+      if (user && user.subscriptionStatus === 'Active' && user.subscriptionPlanId) {
+        const plan = await SubscriptionPlan.findById(user.subscriptionPlanId).lean();
+        if (plan) {
+          subscription = {
+            plan: {
+              id: plan._id.toString(),
+              planName: plan.planName,
+              entitlements: plan.entitlements,
+            }
+          };
+        }
+      }
+    }
     
     if (!subscription || !subscription.plan) {
       throw Object.assign(new Error('No active subscription plan'), {
@@ -30,7 +50,7 @@ async function checkQuestionGenerationLimit(req, res, next) {
     startOfMonth.setHours(0, 0, 0, 0);
 
     const count = await questionSetsRepository.countDocuments({
-      createdBy: req.user.userId,
+      createdBy: req.user.id,
       createdAt: { $gte: startOfMonth },
     });
 
@@ -52,8 +72,25 @@ async function checkValidationRequestLimit(req, res, next) {
   try {
     const { userSubscriptionsService, validationRequestsRepository } = req.app.locals;
     
-    // Get active subscription
-    const subscription = await userSubscriptionsService.getActiveSubscription(req.user.userId);
+    // Get active subscription from UserSubscription collection
+    let subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
+    
+    // Fallback: Check User model if no UserSubscription found
+    if (!subscription || !subscription.plan) {
+      const user = await User.findById(req.user.id).lean();
+      if (user && user.subscriptionStatus === 'Active' && user.subscriptionPlanId) {
+        const plan = await SubscriptionPlan.findById(user.subscriptionPlanId).lean();
+        if (plan) {
+          subscription = {
+            plan: {
+              id: plan._id.toString(),
+              planName: plan.planName,
+              entitlements: plan.entitlements,
+            }
+          };
+        }
+      }
+    }
     
     if (!subscription || !subscription.plan) {
       throw Object.assign(new Error('No active subscription plan'), {
@@ -76,7 +113,7 @@ async function checkValidationRequestLimit(req, res, next) {
     startOfMonth.setHours(0, 0, 0, 0);
 
     const count = await validationRequestsRepository.countDocuments({
-      createdBy: req.user.userId,
+      createdBy: req.user.id,
       createdAt: { $gte: startOfMonth },
     });
 

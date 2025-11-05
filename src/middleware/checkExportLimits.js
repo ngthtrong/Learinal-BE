@@ -17,10 +17,10 @@ async function checkExportLimits(req, res, next) {
 
     // Find active subscription
     const subscription = await UserSubscription.findOne({
-      user: userId,
+      userId: userId,
       status: "active",
       endDate: { $gte: new Date() },
-    }).populate("plan");
+    }).populate("planId");
 
     // If no subscription, check if free tier limits exist
     if (!subscription) {
@@ -31,7 +31,7 @@ async function checkExportLimits(req, res, next) {
     }
 
     // Get export limits from entitlements
-    const entitlements = subscription.plan.entitlements || {};
+    const entitlements = subscription.planId.entitlements || {};
     const exportLimit = entitlements.exportLimits || entitlements.shareLimits;
 
     // If unlimited, allow

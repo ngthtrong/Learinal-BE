@@ -6,8 +6,8 @@ class UserSubscriptionsService {
 
   async getUserSubscriptions(userId) {
     const UserSubscription = this.repository.model;
-    const subscriptions = await UserSubscription.find({ user: userId })
-      .populate('subscriptionPlan')
+    const subscriptions = await UserSubscription.find({ userId: userId })
+      .populate('planId')
       .sort({ createdAt: -1 })
       .lean();
     
@@ -17,9 +17,9 @@ class UserSubscriptionsService {
   async getActiveSubscription(userId) {
     const UserSubscription = this.repository.model;
     const subscription = await UserSubscription.findOne({
-      user: userId,
+      userId: userId,
       status: 'Active',
-    }).populate('subscriptionPlan').lean();
+    }).populate('planId').lean();
     
     return subscription ? this.mapSubscriptionToDTO(subscription) : null;
   }
@@ -36,7 +36,7 @@ class UserSubscriptionsService {
 
     // Cancel any existing active subscription
     await this.repository.updateMany(
-      { user: userId, status: 'Active' },
+      { userId: userId, status: 'Active' },
       { status: 'Canceled', canceledAt: new Date() }
     );
 
@@ -51,8 +51,8 @@ class UserSubscriptionsService {
 
     // Create new subscription
     const subscription = await this.repository.create({
-      user: userId,
-      subscriptionPlan: planId,
+      userId: userId,
+      planId: planId,
       status: 'Active',
       startDate,
       endDate,
@@ -62,7 +62,7 @@ class UserSubscriptionsService {
 
     const UserSubscription = this.repository.model;
     const populated = await UserSubscription.findById(subscription._id)
-      .populate('subscriptionPlan')
+      .populate('planId')
       .lean();
     
     return this.mapSubscriptionToDTO(populated);
@@ -71,7 +71,7 @@ class UserSubscriptionsService {
   async cancelSubscription(userId, subscriptionId) {
     const subscription = await this.repository.findOne({
       _id: subscriptionId,
-      user: userId,
+      userId: userId,
     });
 
     if (!subscription) {
@@ -95,7 +95,7 @@ class UserSubscriptionsService {
   async activateSubscription(userId, subscriptionId) {
     const subscription = await this.repository.findOne({
       _id: subscriptionId,
-      user: userId,
+      userId: userId,
     });
 
     if (!subscription) {
@@ -104,7 +104,7 @@ class UserSubscriptionsService {
 
     // Cancel other active subscriptions
     await this.repository.updateMany(
-      { user: userId, status: 'Active', _id: { $ne: subscriptionId } },
+      { userId: userId, status: 'Active', _id: { $ne: subscriptionId } },
       { status: 'Canceled', canceledAt: new Date() }
     );
 
@@ -117,13 +117,13 @@ class UserSubscriptionsService {
   mapSubscriptionToDTO(subscription) {
     return {
       id: subscription._id.toString(),
-      userId: subscription.user.toString(),
-      plan: subscription.subscriptionPlan ? {
-        id: subscription.subscriptionPlan._id.toString(),
-        planName: subscription.subscriptionPlan.planName,
-        billingCycle: subscription.subscriptionPlan.billingCycle,
-        price: subscription.subscriptionPlan.price,
-        entitlements: subscription.subscriptionPlan.entitlements,
+      userId: subscription.userId.toString(),
+      plan: subscription.planId ? {
+        id: subscription.planId._id.toString(),
+        planName: subscription.planId.planName,
+        billingCycle: subscription.planId.billingCycle,
+        price: subscription.planId.price,
+        entitlements: subscription.planId.entitlements,
       } : null,
       status: subscription.status,
       startDate: subscription.startDate,

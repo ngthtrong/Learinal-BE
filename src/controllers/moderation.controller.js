@@ -10,7 +10,7 @@ module.exports = {
   flagContent: async (req, res, next) => {
     try {
       const { contentType, contentId, reason, description } = req.body;
-      const reportedBy = req.user.userId;
+      const reportedBy = req.user.id;
 
       const flag = await moderationService.flagContent({
         contentType,
@@ -54,7 +54,7 @@ module.exports = {
   reviewFlag: async (req, res, next) => {
     try {
       const { action, notes } = req.body;
-      const reviewedBy = req.user.userId;
+      const reviewedBy = req.user.id;
 
       const flag = await moderationService.reviewFlag(req.params.id, {
         reviewedBy,
@@ -75,7 +75,7 @@ module.exports = {
   dismissFlag: async (req, res, next) => {
     try {
       const { notes } = req.body;
-      const reviewedBy = req.user.userId;
+      const reviewedBy = req.user.id;
 
       const flag = await moderationService.dismissFlag(
         req.params.id,
