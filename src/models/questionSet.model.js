@@ -8,10 +8,11 @@ const QuestionSchema = new Schema(
     correctAnswerIndex: { type: Number, required: true },
     explanation: { type: String },
     topicTags: { type: [String], default: [] },
+    topicId: { type: String }, // ID của topic trong mục lục (tableOfContents) mà câu hỏi thuộc về
     topicStatus: { type: String },
     difficultyLevel: {
       type: String,
-      enum: ["Biết", "Hiểu", "Vận dụng", "Vận dụng cao"],
+      enum: ["Remember", "Understand", "Apply", "Analyze"],
     },
   },
   { _id: false }

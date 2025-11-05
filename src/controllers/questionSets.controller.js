@@ -1,10 +1,12 @@
 const QuestionSetsRepository = require("../repositories/questionSets.repository");
 const DocumentsRepository = require("../repositories/documents.repository");
+const SubjectsRepository = require("../repositories/subjects.repository");
 const { env, llm } = require("../config");
 const LLMClient = require("../adapters/llmClient");
 
 const repo = new QuestionSetsRepository();
 const docRepo = new DocumentsRepository();
+const subjectRepo = new SubjectsRepository();
 
 function mapId(doc) {
   if (!doc) return doc;
@@ -38,16 +40,36 @@ module.exports = {
   generate: async (req, res, next) => {
     try {
       const user = req.user;
-      const { subjectId, title, numQuestions = 10, difficulty = "Hiểu" } = req.body || {};
+      const { 
+        subjectId, 
+        title, 
+        numQuestions = 10, 
+        difficulty = "Understand",
+        difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }
+        topicDistribution = null, // { "topic-id-1": 10, "topic-id-2": 20, ... }
+      } = req.body || {};
+      
       if (!subjectId || !title) {
         return res
           .status(400)
           .json({ code: "ValidationError", message: "subjectId and title are required" });
       }
-      if (numQuestions < 1 || numQuestions > 100) {
-        return res
-          .status(400)
-          .json({ code: "ValidationError", message: "numQuestions must be between 1 and 100" });
+
+      // Validate numQuestions or difficultyDistribution
+      let totalQuestions = numQuestions;
+      if (difficultyDistribution && typeof difficultyDistribution === 'object') {
+        totalQuestions = Object.values(difficultyDistribution).reduce((sum, count) => sum + (count || 0), 0);
+        if (totalQuestions < 1 || totalQuestions > 100) {
+          return res
+            .status(400)
+            .json({ code: "ValidationError", message: "Total questions from difficultyDistribution must be between 1 and 100" });
+        }
+      } else {
+        if (numQuestions < 1 || numQuestions > 100) {
+          return res
+            .status(400)
+            .json({ code: "ValidationError", message: "numQuestions must be between 1 and 100" });
+        }
       }
 
       // Enforce real generation: require LLM configured
@@ -61,6 +83,17 @@ module.exports = {
             message:
               "LLM not configured for real generation. Set LLM_MODE=real and provide GEMINI_API_KEY.",
           });
+      }
+
+      // Get subject's table of contents
+      let tableOfContents = [];
+      try {
+        const subject = await subjectRepo.findById(subjectId);
+        if (subject && Array.isArray(subject.tableOfContents)) {
+          tableOfContents = subject.tableOfContents;
+        }
+      } catch {
+        // Non-fatal: if repository fails, continue without TOC
       }
 
       // Build context from user's documents in the subject (prefer summaries, then extracted text)
@@ -103,8 +136,11 @@ module.exports = {
       const client = new LLMClient(llm);
       const { questions } = await client.generateQuestions({
         contextText,
-        numQuestions,
+        numQuestions: totalQuestions,
         difficulty,
+        difficultyDistribution,
+        topicDistribution,
+        tableOfContents,
       });
 
       const toCreate = {

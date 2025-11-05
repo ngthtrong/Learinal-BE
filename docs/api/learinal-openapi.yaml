@@ -125,6 +125,14 @@ components:
         summaryShort: { type: string, nullable: true }
         summaryFull: { type: string, nullable: true }
         summaryUpdatedAt: { type: string, format: date-time, nullable: true }
+        tableOfContents: 
+          type: array
+          items: 
+            type: object
+            properties:
+              topicId: { type: string }
+              topicName: { type: string }
+              childTopics: { type: array, items: { type: object } }
         status: { type: string, enum: [Uploading, Processing, Completed, Error] }
         uploadedAt: { type: string, format: date-time }
     Question:
@@ -136,7 +144,8 @@ components:
         correctAnswerIndex: { type: integer }
         explanation: { type: string, nullable: true }
         topicTags: { type: array, items: { type: string } }
-        difficultyLevel: { type: string, enum: ["Biết","Hiểu","Vận dụng","Vận dụng cao"] }
+        topicId: { type: string, nullable: true, description: "ID của topic trong mục lục mà câu hỏi thuộc về" }
+        difficultyLevel: { type: string, enum: ["Remember","Understand","Apply","Analyze"] }
     QuestionSet:
       type: object
       properties:
@@ -467,12 +476,32 @@ paths:
           application/json:
             schema:
               type: object
-              required: [documentId, numQuestions]
+              required: [subjectId, title]
               properties:
-                documentId: { type: string }
-                topics: { type: array, items: { type: string } }
-                difficulty: { type: string, enum: ["Biết","Hiểu","Vận dụng","Vận dụng cao"] }
-                numQuestions: { type: integer, minimum: 1, maximum: 100 }
+                subjectId: { type: string, description: "ID của môn học" }
+                title: { type: string, description: "Tiêu đề bộ đề" }
+                numQuestions: { type: integer, minimum: 1, maximum: 100, default: 10, description: "Tổng số câu hỏi (bỏ qua nếu dùng difficultyDistribution)" }
+                difficulty: { type: string, enum: ["Remember","Understand","Apply","Analyze"], default: "Understand", description: "Độ khó mặc định (bỏ qua nếu dùng difficultyDistribution)" }
+                difficultyDistribution:
+                  type: object
+                  description: "Phân bố số lượng câu hỏi theo từng mức độ khó (Bloom's Taxonomy). Ví dụ: { 'Remember': 20, 'Understand': 10, 'Apply': 10, 'Analyze': 10 }"
+                  additionalProperties:
+                    type: integer
+                    minimum: 0
+                  example:
+                    Remember: 20
+                    Understand: 10
+                    Apply: 10
+                    Analyze: 10
+                topicDistribution:
+                  type: object
+                  description: "Phân bố số lượng câu hỏi theo từng topic trong mục lục. Ví dụ: { 'topic-id-1': 10, 'topic-id-2': 20 }"
+                  additionalProperties:
+                    type: integer
+                    minimum: 0
+                  example:
+                    topic-uuid-1: 10
+                    topic-uuid-2: 20
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/QuestionSet' } } } }
         '202': { description: Accepted (async processing may continue) }

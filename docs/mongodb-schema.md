@@ -161,6 +161,7 @@ Trường dữ liệu:
 | summaryShort | String | No | Tóm tắt ngắn |
 | summaryFull | String | No | Tóm tắt đầy đủ |
 | summaryUpdatedAt | Date | No | Lần cập nhật tóm tắt |
+| tableOfContents | Array<Object> | No | Mục lục của tài liệu (cấu trúc tương tự subjects.tableOfContents) |
 | status | String (enum) | Yes | 'Uploading' | 'Processing' | 'Completed' | 'Error' |
 | uploadedAt | Date | Yes | Thời điểm tải |
 
@@ -192,8 +193,9 @@ Ví dụ document (rút gọn):
       "correctAnswerIndex": 1,
       "explanation": "Giải thích ...",
       "topicTags": ["Ch1"],
+      "topicId": "topic-uuid-1",
       "topicStatus": "active",
-      "difficultyLevel": "Hiểu"
+      "difficultyLevel": "Understand"
     }
   ],
   "createdAt": {"$date": "2025-10-12T00:00:00Z"},
@@ -214,11 +216,28 @@ Trường dữ liệu chính:
 | questions[] | Array<Object> | Yes | Danh sách câu hỏi nhúng |
 | createdAt/updatedAt | Date | Yes | Dấu thời gian |
 
+Trường trong questions[] (subdocument):
+
+| Trường | Kiểu | Bắt buộc | Mô tả |
+|---|---|---|---|
+| questionId | String | Yes | UUID của câu hỏi |
+| questionText | String | Yes | Nội dung câu hỏi |
+| options | Array<String> | Yes | Các đáp án |
+| correctAnswerIndex | Number | Yes | Chỉ số đáp án đúng (0-based) |
+| explanation | String | No | Giải thích đáp án |
+| topicTags | Array<String> | No | Tags phân loại |
+| topicId | String | No | ID của topic trong tableOfContents mà câu hỏi thuộc về |
+| topicStatus | String | No | Trạng thái topic |
+| difficultyLevel | String (enum) | Yes | 'Remember' | 'Understand' | 'Apply' | 'Analyze' (Bloom's Taxonomy) |
+
 Index:
 - `{ userId: 1, subjectId: 1, status: 1, createdAt: -1 }`.
 - `{ sharedUrl: 1 }` unique nếu cho phép truy cập công khai qua URL.
 
-Lưu ý câu hỏi (nhúng): bắt buộc `difficultyLevel ∈ {Biết, Hiểu, Vận dụng, Vận dụng cao}` để tính trọng số.
+Lưu ý câu hỏi (nhúng): 
+- Bắt buộc `difficultyLevel ∈ {Remember, Understand, Apply, Analyze}` theo Bloom's Taxonomy để tính trọng số.
+- Trường `topicId` liên kết câu hỏi với một topic cụ thể trong mục lục (tableOfContents) của môn học hoặc tài liệu.
+- Khi tạo bộ đề có thể chỉ định phân bố câu hỏi theo độ khó (`difficultyDistribution`) và theo topic (`topicDistribution`).
 
 ---
 
