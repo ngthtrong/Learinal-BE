@@ -145,4 +145,29 @@ module.exports = {
       next(e);
     }
   },
+
+  // DELETE /documents/:id
+  remove: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const doc = await docsRepo.findById(req.params.id);
+      if (!doc || String(doc.ownerId) !== String(user.id)) {
+        return res.status(404).json({ code: "NotFound", message: "Document not found" });
+      }
+
+      // Xóa file trong storage
+      if (doc.storagePath) {
+        await _storage.delete(doc.storagePath).catch((err) => {
+          logger.warn({ err, storagePath: doc.storagePath }, "[documents] Failed to delete file from storage");
+        });
+      }
+
+      // Xóa document từ database
+      await docsRepo.deleteById(req.params.id);
+      
+      return res.status(204).send();
+    } catch (e) {
+      next(e);
+    }
+  },
 };

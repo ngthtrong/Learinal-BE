@@ -11,19 +11,17 @@ module.exports = {
       if (!subscription) {
         const user = await User.findById(req.user.id).lean();
         
-        if (user && user.subscriptionStatus === 'Active' && user.subscriptionPlanId) {
-          // Create UserSubscription record from User model data
-          const newSubscription = await UserSubscription.create({
-            userId: user._id,
-            planId: user.subscriptionPlanId,
-            startDate: user.createdAt, // Use user creation date as fallback
-            endDate: user.subscriptionRenewalDate,
-            renewalDate: user.subscriptionRenewalDate,
-            status: 'Active',
-            entitlementsSnapshot: null,
-          });
-          
-          // Fetch the newly created subscription with populated plan
+      if (user && user.subscriptionStatus === 'Active' && user.subscriptionPlanId) {
+        // Create UserSubscription record from User model data
+        const _newSubscription = await UserSubscription.create({
+          userId: user._id,
+          planId: user.subscriptionPlanId,
+          startDate: user.createdAt, // Use user creation date as fallback
+          endDate: user.subscriptionRenewalDate,
+          renewalDate: user.subscriptionRenewalDate,
+          status: 'Active',
+          entitlementsSnapshot: null,
+        });          // Fetch the newly created subscription with populated plan
           subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
         }
       }

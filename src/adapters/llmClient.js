@@ -48,7 +48,7 @@ class LLMClient {
   async generateQuestions(input) {
     const { 
       contextText = "", 
-      numQuestions = 10, 
+      _numQuestions = 10, 
       difficulty = "Understand", 
       topics = [],
       difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }

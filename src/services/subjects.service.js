@@ -1,4 +1,8 @@
 const SubjectsRepository = require('../repositories/subjects.repository');
+const DocumentsRepository = require('../repositories/documents.repository');
+const QuestionSetsRepository = require('../repositories/questionSets.repository');
+const StorageClient = require('../adapters/storageClient');
+const storageConfig = require('../config/storage');
 
 function mapId(doc) {
   if (!doc) return doc;
@@ -9,6 +13,9 @@ function mapId(doc) {
 class SubjectsService {
   constructor() {
     this.repo = new SubjectsRepository();
+    this.documentsRepo = new DocumentsRepository();
+    this.questionSetsRepo = new QuestionSetsRepository();
+    this.storageClient = new StorageClient(storageConfig);
   }
 
   async listByUser(userId, { page = 1, pageSize = 20 } = {}) {
@@ -48,6 +55,22 @@ class SubjectsService {
   async removeOwned(userId, id) {
     const found = await this.repo.findById(id);
     if (!found || String(found.userId) !== String(userId)) return false;
+    
+    // Lấy danh sách documents để xóa files trong storage
+    const documents = await this.documentsRepo.findMany({ subjectId: id }, { projection: 'storagePath' });
+    
+    // Xóa files trong storage
+    await Promise.allSettled(
+      documents.map(doc => this.storageClient.delete(doc.storagePath))
+    );
+    
+    // Xóa các documents liên quan
+    await this.documentsRepo.deleteMany({ subjectId: id });
+    
+    // Xóa các question sets liên quan
+    await this.questionSetsRepo.deleteMany({ subjectId: id });
+    
+    // Xóa subject
     await this.repo.deleteById(id);
     return true;
   }

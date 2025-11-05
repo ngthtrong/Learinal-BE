@@ -54,5 +54,6 @@ router.post(
 // Cache document metadata (5 minutes TTL)
 router.get("/:id", authenticateJWT, cacheResponse({ ttl: 300 }), controller.get);
 router.get("/:id/summary", authenticateJWT, cacheResponse({ ttl: 300 }), controller.summary);
+router.delete("/:id", authenticateJWT, controller.remove);
 
 module.exports = router;

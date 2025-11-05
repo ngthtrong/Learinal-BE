@@ -85,74 +85,39 @@ module.exports = {
           });
       }
 
-      // Get subject's table of contents
-      let tableOfContents = [];
-      try {
-        const subject = await subjectRepo.findById(subjectId);
-        if (subject && Array.isArray(subject.tableOfContents)) {
-          tableOfContents = subject.tableOfContents;
-        }
-      } catch {
-        // Non-fatal: if repository fails, continue without TOC
-      }
-
-      // Build context from user's documents in the subject (prefer summaries, then extracted text)
-      let contextText = "";
-      try {
-        const docs = await docRepo.findMany(
-          { subjectId, ownerId: user.id, status: "Completed" },
-          {
-            projection: { originalFileName: 1, summaryShort: 1, summaryFull: 1, extractedText: 1 },
-            sort: { uploadedAt: -1 },
-            limit: 10,
-          }
-        );
-        if (Array.isArray(docs) && docs.length > 0) {
-          const parts = [];
-          for (const d of docs) {
-            const header = `Document: ${d.originalFileName || "unknown"}`;
-            const summary = d.summaryFull || d.summaryShort || "";
-            const body =
-              summary && summary.trim().length > 0
-                ? summary
-                : String(d.extractedText || "").slice(0, 3000); // cap per doc to keep prompt size reasonable
-            if (body && body.trim().length > 0) {
-              parts.push(`${header}\n${body}`);
-            }
-          }
-          // Compose overall context with a hard cap to fit the LLM client's 20k slice
-          contextText = parts.join("\n\n---\n\n");
-          contextText = contextText.slice(0, 18000);
-        }
-      } catch {
-        // Non-fatal: if repository fails, fall back to title-only
-      }
-
-      // Fallback if no usable document context
-      if (!contextText || contextText.trim().length === 0) {
-        contextText = `Topic: ${title}`;
-      }
-
-      const client = new LLMClient(llm);
-      const { questions } = await client.generateQuestions({
-        contextText,
-        numQuestions: totalQuestions,
-        difficulty,
-        difficultyDistribution,
-        topicDistribution,
-        tableOfContents,
-      });
-
+      // Create question set with Pending status
       const toCreate = {
         userId: user.id,
         subjectId,
         title,
-        status: "Draft",
+        status: "Pending",
         isShared: false,
-        questions,
+        questions: [],
       };
       const created = await repo.create(toCreate);
-      return res.status(201).json(mapId(created));
+
+      // Enqueue question generation job
+      const { enqueueQuestionsGenerate } = require("../adapters/queue");
+      const logger = require("../utils/logger");
+      
+      const jobPayload = {
+        questionSetId: created._id.toString(),
+        userId: String(user.id),
+        subjectId: String(subjectId),
+        numQuestions: totalQuestions,
+        difficulty,
+        difficultyDistribution,
+        topicDistribution,
+      };
+      
+      logger.info({ jobPayload }, "[controller] enqueueing question generation");
+      await enqueueQuestionsGenerate(jobPayload);
+      logger.info({ questionSetId: created._id.toString() }, "[controller] question generation enqueued");
+
+      return res.status(202).json({
+        ...mapId(created),
+        message: "Question set generation started. You will receive a notification when completed.",
+      });
     } catch (e) {
       next(e);
     }

@@ -26,6 +26,20 @@ class StorageClient {
     }
     throw new Error('Storage provider not implemented');
   }
+
+  async delete(storagePath) {
+    const mode = process.env.STORAGE_MODE || 'local';
+    if (mode === 'local') {
+      try {
+        await fs.promises.unlink(storagePath);
+        return true;
+      } catch (_err) {
+        // File không tồn tại hoặc lỗi khác, bỏ qua
+        return false;
+      }
+    }
+    throw new Error('Storage provider not implemented');
+  }
 }
 
 module.exports = StorageClient;

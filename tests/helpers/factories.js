@@ -18,6 +18,7 @@ const UserSubscription = require("../../src/models/userSubscription.model");
 async function createTestUser(overrides = {}) {
   const defaults = {
     email: `test-${Date.now()}@example.com`,
+    fullName: "Test User",
     displayName: "Test User",
     role: "Learner",
     status: "Active",

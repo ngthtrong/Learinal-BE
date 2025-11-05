@@ -18,7 +18,10 @@ if (!connection) {
 }
 
 function startWorker(name, processor) {
-  const w = new Worker(name, async (job) => processor(job.data), { connection });
+  const w = new Worker(name, async (job) => processor(job.data), { 
+    connection,
+    concurrency: name === 'questionsGenerate' ? 2 : 1, // Allow 2 concurrent question generation jobs
+  });
   w.on("completed", (job) => logger.info({ queue: name, id: job.id }, "job completed"));
   w.on("failed", (job, err) => logger.error({ queue: name, id: job?.id, err }, "job failed"));
   return w;

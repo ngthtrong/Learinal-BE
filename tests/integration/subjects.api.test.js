@@ -217,6 +217,41 @@ describe("Subjects API Integration Tests", () => {
         .expect(404);
     });
 
+    it("should delete subject and all related documents", async () => {
+      const { Document } = require("../../src/models");
+      const subject = await createTestSubject(user._id, { subjectName: "Test Subject" });
+
+      // Create some documents for this subject
+      const doc1 = await Document.create({
+        subjectId: subject._id,
+        ownerId: user._id,
+        originalFileName: "test1.pdf",
+        fileType: ".pdf",
+        fileSize: 1,
+        storagePath: "/tmp/test1.pdf",
+        status: "Completed",
+        uploadedAt: new Date(),
+      });
+
+      const doc2 = await Document.create({
+        subjectId: subject._id,
+        ownerId: user._id,
+        originalFileName: "test2.pdf",
+        fileType: ".pdf",
+        fileSize: 1,
+        storagePath: "/tmp/test2.pdf",
+        status: "Completed",
+        uploadedAt: new Date(),
+      });
+
+      // Delete subject
+      await request(app).delete(`/api/v1/subjects/${subject._id}`).set(authHeaders).expect(204);
+
+      // Verify documents are also deleted
+      const remainingDocs = await Document.find({ subjectId: subject._id });
+      expect(remainingDocs).toHaveLength(0);
+    });
+
     it("should return 403 if user is not the owner", async () => {
       const otherUser = await createTestUser({ email: "other@example.com" });
       const subject = await createTestSubject(otherUser._id);

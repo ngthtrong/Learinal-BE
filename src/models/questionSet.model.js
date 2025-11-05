@@ -26,14 +26,17 @@ const QuestionSetSchema = new Schema(
     status: {
       type: String,
       enum: [
+        "Pending",
+        "Processing",
+        "Draft",
         "Public",
         "PendingValidation",
         "InReview",
         "Validated",
         "Rejected",
-        "Draft",
         "PendingApproval",
         "Published",
+        "Error",
       ],
       required: true,
     },

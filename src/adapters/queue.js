@@ -41,7 +41,9 @@ async function enqueueContentSummary(payload) {
 async function enqueueQuestionsGenerate(payload) {
   ensureQueues();
   if (!queues.questionsGenerate) throw new Error('Queue not available (missing REDIS_URL)');
+  logger.info({ payload }, 'Enqueuing question generation');
   await queues.questionsGenerate.add('generate', payload, { attempts: 3, backoff: { type: 'exponential', delay: 500 } });
+  logger.info({ questionSetId: payload.questionSetId }, 'Question generation enqueued successfully');
 }
 
 async function enqueueEmail(payload) {

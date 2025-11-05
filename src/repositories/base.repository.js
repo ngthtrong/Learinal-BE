@@ -44,6 +44,10 @@ class BaseRepository {
     return this.model.findByIdAndDelete(id).lean();
   }
 
+  async deleteMany(filter = {}) {
+    return this.model.deleteMany(filter);
+  }
+
   async count(filter = {}) {
     return this.model.countDocuments(filter);
   }
