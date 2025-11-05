@@ -36,6 +36,52 @@ module.exports = {
     }
   },
 
+  // GET /subjects/:subjectId/question-sets
+  listBySubject: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const { subjectId } = req.params;
+      
+      // Validate và parse pagination params
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+      
+      // Filter: chỉ lấy question sets của user hiện tại và subject được chỉ định
+      const filter = {
+        subjectId,
+        userId: user.id,
+      };
+      
+      // Optional status filter
+      if (req.query.status) {
+        filter.status = req.query.status;
+      }
+      
+      // Optional isShared filter
+      if (req.query.isShared !== undefined) {
+        filter.isShared = req.query.isShared === 'true';
+      }
+      
+      const result = await repo.paginate(filter, {
+        page,
+        pageSize,
+        sort: { createdAt: -1 },
+      });
+      
+      return res.status(200).json({
+        items: result.items.map(mapId),
+        meta: {
+          page: result.meta.page,
+          pageSize: result.meta.pageSize,
+          total: result.meta.totalItems,
+          totalPages: result.meta.totalPages,
+        },
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
   // POST /question-sets/generate (real: uses LLM when configured; else returns 503)
   generate: async (req, res, next) => {
     try {

@@ -36,6 +36,16 @@ const documentsQuerySchema = Joi.object({
 	}),
 }).unknown(true);
 
+const questionSetsQuerySchema = Joi.object({
+	params: Joi.object({ subjectId: Joi.string().required() }),
+	query: Joi.object({
+		page: Joi.number().integer().min(1).optional(),
+		pageSize: Joi.number().integer().min(1).max(100).optional(),
+		status: Joi.string().valid('Pending', 'Processing', 'Draft', 'Public', 'PendingValidation', 'InReview', 'Validated', 'Rejected', 'PendingApproval', 'Published', 'Error').optional(),
+		isShared: Joi.boolean().optional(),
+	}),
+}).unknown(true);
+
 // GET /subjects
 router.get('/', rateLimit({ limit: 60 }), authenticateJWT, cacheResponse({ ttl: CacheTTL.SUBJECT }), controller.list);
 
@@ -59,6 +69,16 @@ router.get(
 	inputValidation(documentsQuerySchema),
 	cacheResponse({ ttl: CacheTTL.DOCUMENT }),
 	require('../controllers/documents.controller').listBySubject
+);
+
+// GET /subjects/:subjectId/question-sets - Get all question sets for a subject
+router.get(
+	'/:subjectId/question-sets',
+	rateLimit({ limit: 60 }),
+	authenticateJWT,
+	inputValidation(questionSetsQuerySchema),
+	cacheResponse({ ttl: 600 }),
+	require('../controllers/questionSets.controller').listBySubject
 );
 
 module.exports = router;

@@ -20,6 +20,61 @@ module.exports = {
     } catch (e) { next(e); }
   },
 
+  // GET /quiz-attempts/:id
+  get: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const attempt = await attemptsRepo.findById(req.params.id);
+      if (!attempt || String(attempt.userId) !== String(user.id)) {
+        return res.status(404).json({ code: 'NotFound', message: 'Quiz attempt not found' });
+      }
+      return res.status(200).json({ id: String(attempt._id || attempt.id), ...attempt });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // GET /question-sets/:questionSetId/quiz-attempts
+  listByQuestionSet: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const { questionSetId } = req.params;
+      
+      // Validate và parse pagination params
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+      
+      // Filter: chỉ lấy quiz attempts của user hiện tại và question set được chỉ định
+      const filter = {
+        setId: questionSetId,
+        userId: user.id,
+      };
+      
+      // Optional isCompleted filter
+      if (req.query.isCompleted !== undefined) {
+        filter.isCompleted = req.query.isCompleted === 'true';
+      }
+      
+      const result = await attemptsRepo.paginate(filter, {
+        page,
+        pageSize,
+        sort: { endTime: -1 },
+      });
+      
+      return res.status(200).json({
+        items: result.items.map(item => ({ id: String(item._id || item.id), ...item })),
+        meta: {
+          page: result.meta.page,
+          pageSize: result.meta.pageSize,
+          total: result.meta.totalItems,
+          totalPages: result.meta.totalPages,
+        },
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
   // POST /quiz-attempts/:id/submit { answers: [{questionId, selectedOptionIndex}] }
   submit: async (req, res, next) => {
     try {

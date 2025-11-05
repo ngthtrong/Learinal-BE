@@ -14,6 +14,7 @@ const submitSchema = Joi.object({
 }).unknown(true);
 
 router.post('/', rateLimit({ limit: 30 }), authenticateJWT, inputValidation(createSchema), controller.create);
+router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.get);
 router.post('/:id/submit', rateLimit({ limit: 30 }), authenticateJWT, inputValidation(submitSchema), controller.submit);
 
 module.exports = router;

@@ -19,6 +19,15 @@ const genSchema = Joi.object({
   }),
 }).unknown(true);
 
+const quizAttemptsQuerySchema = Joi.object({
+  params: Joi.object({ questionSetId: Joi.string().required() }),
+  query: Joi.object({
+    page: Joi.number().integer().min(1).optional(),
+    pageSize: Joi.number().integer().min(1).max(100).optional(),
+    isCompleted: Joi.boolean().optional(),
+  }),
+}).unknown(true);
+
 // Cache GET requests (10 minutes TTL)
 router.get("/", authenticateJWT, cacheResponse({ ttl: 600 }), controller.list);
 router.post(
@@ -34,5 +43,14 @@ router.get("/:id", authenticateJWT, cacheResponse({ ttl: 600 }), controller.get)
 router.patch("/:id", authenticateJWT, controller.update);
 router.post("/:id/share", authenticateJWT, controller.share);
 router.post("/:id/review", authenticateJWT, controller.requestReview);
+
+// GET /question-sets/:questionSetId/quiz-attempts - Get all quiz attempts for a question set
+router.get(
+  "/:questionSetId/quiz-attempts",
+  authenticateJWT,
+  inputValidation(quizAttemptsQuerySchema),
+  cacheResponse({ ttl: 300 }),
+  require("../controllers/quizAttempts.controller").listByQuestionSet
+);
 
 module.exports = router;
