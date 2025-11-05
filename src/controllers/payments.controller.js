@@ -2,6 +2,9 @@ const QRCode = require("qrcode");
 const { sepay } = require("../config");
 const createSepayClient = require("../adapters/sepayClient");
 const SepayScanService = require("../services/sepayScan.service");
+const { SubscriptionPlansRepository } = require("../repositories");
+
+const subscriptionPlansRepo = new SubscriptionPlansRepository();
 
 // Simple dynamic QR generator for Sepay flow (placeholder without calling Sepay API)
 // Encodes a structured reference that includes userId, plan, amount.
@@ -14,16 +17,46 @@ module.exports = {
         return res.status(401).json({ code: "Unauthorized", message: "Missing user" });
       }
 
-      const amount = 2000; // VND
+      // Get subscriptionPlanId from request body
+      const { subscriptionPlanId } = req.body;
+      if (!subscriptionPlanId) {
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "subscriptionPlanId is required",
+          details: { subscriptionPlanId: "This field is required" }
+        });
+      }
+
+      // Validate subscription plan exists
+      const plan = await subscriptionPlansRepo.findById(subscriptionPlanId);
+      if (!plan) {
+        return res.status(404).json({ 
+          code: "NotFound", 
+          message: "Subscription plan not found",
+          details: { subscriptionPlanId: "Invalid subscription plan ID" }
+        });
+      }
+
+      // Check plan is active
+      if (plan.status !== "Active") {
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "Subscription plan is not active",
+          details: { subscriptionPlanId: "This plan is currently inactive" }
+        });
+      }
+
+      const amount = plan.price; // Use price from plan
       const currency = "VND";
-      const plan = "standard"; // purchase content
+      const planName = plan.planName.toLowerCase(); // e.g., "standard", "pro"
+      const planId = (plan.id || plan._id).toString();
 
       // Reference string that we will also expect back in webhook payload (or be able to match by userId/plan/amount)
-      const reference = `uid:${userId}|plan:${plan}|amt:${amount}|ts:${Date.now()}`;
+      const reference = `uid:${userId}|planId:${planId}|amt:${amount}|ts:${Date.now()}`;
 
       // Simple approach: build qr.sepay.vn URL using env configs (preferred)
-      // des will include plan + uid to allow matching on webhook side
-      const description = `SEVQR standard uid:${userId}`;
+      // des will include planId + uid to allow matching on webhook side
+      const description = `SEVQR ${planName} uid:${userId} planId:${planId}`;
 
       let qrUrl;
       if (sepay?.qrAccount && sepay?.qrBank) {
@@ -46,7 +79,7 @@ module.exports = {
             amount,
             currency,
             reference,
-            description: plan,
+            description: planName,
           });
           if (created.qrDataUrl) {
             qrDataUrl = created.qrDataUrl;
@@ -58,13 +91,23 @@ module.exports = {
         }
       }
       if (!qrUrl && !qrDataUrl) {
-        const payload = `SEPAY|ref=${reference}|content=${plan}|currency=${currency}`;
+        const payload = `SEPAY|ref=${reference}|content=${planName}|currency=${currency}`;
         qrDataUrl = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M" });
       }
 
-      return res
-        .status(200)
-        .json({ provider: "sepay", amount, currency, content: plan, reference, qrUrl, qrDataUrl });
+      return res.status(200).json({ 
+        provider: "sepay", 
+        amount, 
+        currency, 
+        plan: {
+          id: planId,
+          name: plan.planName,
+          billingCycle: plan.billingCycle,
+        },
+        reference, 
+        qrUrl, 
+        qrDataUrl 
+      });
     } catch (err) {
       return next(err);
     }

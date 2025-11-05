@@ -1,6 +1,6 @@
 const createSepayClient = require("../adapters/sepayClient");
 const { sepay } = require("../config");
-const { UsersRepository } = require("../repositories");
+const { UsersRepository, SubscriptionPlansRepository } = require("../repositories");
 
 function extractUserId(text) {
   if (!text || typeof text !== "string") return null;
@@ -10,15 +10,23 @@ function extractUserId(text) {
   return m ? m[1].toLowerCase() : null;
 }
 
+function extractPlanId(text) {
+  if (!text || typeof text !== "string") return null;
+  // Extract planId from content: "planId:<24hex>" or "planid<24hex>"
+  const m = text.match(/planid:?([a-f0-9]{24})/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 class SepayScanService {
-  constructor({ usersRepository } = {}) {
+  constructor({ usersRepository, subscriptionPlansRepository } = {}) {
     this.usersRepository = usersRepository || new UsersRepository();
+    this.subscriptionPlansRepository = subscriptionPlansRepository || new SubscriptionPlansRepository();
     this.client = createSepayClient(sepay);
   }
 
   /**
    * Scan recent transactions and activate user subscriptions matching criteria.
-   * Criteria: amount_in == 2000, transaction_content includes 'standard' and uid:<24hex>.
+   * Criteria: transaction_content includes 'uid:<24hex>' and 'planId:<24hex>', amount matches plan price.
    * Filters: uses SEPAY_QR_ACCOUNT if present; limit defaults to 50.
    */
   async scanRecent({ accountNumber, limit = 50, debug = false } = {}) {
@@ -29,6 +37,22 @@ class SepayScanService {
     const data = await this.client.listTransactions(params);
     const txs = Array.isArray(data?.transactions) ? data.transactions : [];
 
+    // Fetch all active subscription plans for matching
+    const allPlans = await this.subscriptionPlansRepository.findMany(
+      { status: "Active" },
+      { limit: 100, skip: 0 }
+    );
+    if (!allPlans || allPlans.length === 0) {
+      throw new Error("No active subscription plans found in database");
+    }
+
+    // Create a map of planId -> plan for quick lookup
+    const planMap = new Map();
+    allPlans.forEach(plan => {
+      const planId = (plan.id || plan._id).toString().toLowerCase();
+      planMap.set(planId, plan);
+    });
+
     let matched = 0;
     let updated = 0;
     const details = [];
@@ -36,20 +60,49 @@ class SepayScanService {
     for (const tx of txs) {
       const amountIn = Number(tx?.amount_in || 0);
       const content = String(tx?.transaction_content || "");
-      if (amountIn !== 2000) continue;
-      // Check for both SEVQR prefix and standard keyword
+      
+      // Check for SEVQR prefix
       if (!/SEVQR/i.test(content)) continue;
-      if (!/\bstandard\b/i.test(content)) continue;
+      
       const userId = extractUserId(content);
-      if (!userId) continue;
+      const planId = extractPlanId(content);
+      
+      if (!userId || !planId) continue;
+      
+      // Find matching plan by planId
+      const plan = planMap.get(planId);
+      if (!plan) {
+        details.push({ userId, txId: tx.id, amountIn, content, action: "plan_not_found", planId });
+        continue;
+      }
+      
+      // Verify amount matches plan price
+      if (amountIn !== plan.price) {
+        details.push({ userId, txId: tx.id, amountIn, content, action: "amount_mismatch", expected: plan.price, actual: amountIn });
+        continue;
+      }
+      
       matched++;
       const curr = await this.usersRepository.findByUserId(userId);
       if (curr && curr.subscriptionStatus === "None") {
-        await this.usersRepository.updateUserById(userId, { subscriptionStatus: "Active" });
+        // Calculate renewal date based on billing cycle
+        const renewalDate = new Date();
+        if (plan.billingCycle === "Monthly") {
+          renewalDate.setMonth(renewalDate.getMonth() + 1);
+        } else if (plan.billingCycle === "Yearly") {
+          renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+        }
+
+        // Update user with subscription details
+        await this.usersRepository.updateUserById(userId, {
+          subscriptionStatus: "Active",
+          subscriptionPlanId: plan.id || plan._id,
+          subscriptionRenewalDate: renewalDate,
+        });
         updated++;
-        details.push({ userId, txId: tx.id, amountIn, content, action: "activated" });
+        details.push({ userId, txId: tx.id, amountIn, content, planId, planName: plan.planName, action: "activated" });
       } else {
-        details.push({ userId, txId: tx.id, amountIn, content, action: "noop" });
+        details.push({ userId, txId: tx.id, amountIn, content, planId, planName: plan.planName, action: "noop" });
       }
     }
 
