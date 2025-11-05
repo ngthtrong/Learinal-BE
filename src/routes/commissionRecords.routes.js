@@ -10,10 +10,10 @@ router.use(authenticateJWT);
 
 // Expert endpoints
 router.get('/', rateLimit({ limit: 60 }), controller.list);
-router.get('/summary', rateLimit({ limit: 60 }), authorizeRole(['Expert']), controller.summary);
+router.get('/summary', rateLimit({ limit: 60 }), authorizeRole('Expert'), controller.summary);
 router.get('/:id', rateLimit({ limit: 60 }), controller.get);
 
 // Admin endpoints
-router.patch('/:id/mark-paid', rateLimit({ limit: 30 }), authorizeRole(['Admin']), controller.markAsPaid);
+router.patch('/:id/mark-paid', rateLimit({ limit: 30 }), authorizeRole('Admin'), controller.markAsPaid);
 
 module.exports = router;

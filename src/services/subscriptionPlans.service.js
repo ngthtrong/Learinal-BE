@@ -4,7 +4,7 @@ class SubscriptionPlansService {
   }
 
   async listActivePlans() {
-    const plans = await this.repository.find({ status: 'Active' });
+    const plans = await this.repository.findMany({ status: 'Active' });
     return plans.map(this.mapPlanToDTO);
   }
 

@@ -62,10 +62,12 @@ class AdminService {
     }
 
     // Get user's subscriptions
-    const subscriptions = await this.subscriptionsRepo.find({ userId: id })
+    const UserSubscription = this.subscriptionsRepo.model;
+    const subscriptions = await UserSubscription.find({ userId: id })
       .populate('planId')
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5)
+      .lean();
 
     return {
       ...this.mapUserToDTO(user),

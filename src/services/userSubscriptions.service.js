@@ -5,18 +5,21 @@ class UserSubscriptionsService {
   }
 
   async getUserSubscriptions(userId) {
-    const subscriptions = await this.repository.find({ user: userId })
+    const UserSubscription = this.repository.model;
+    const subscriptions = await UserSubscription.find({ user: userId })
       .populate('subscriptionPlan')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return subscriptions.map(this.mapSubscriptionToDTO);
   }
 
   async getActiveSubscription(userId) {
-    const subscription = await this.repository.findOne({
+    const UserSubscription = this.repository.model;
+    const subscription = await UserSubscription.findOne({
       user: userId,
       status: 'Active',
-    }).populate('subscriptionPlan');
+    }).populate('subscriptionPlan').lean();
     
     return subscription ? this.mapSubscriptionToDTO(subscription) : null;
   }
@@ -57,8 +60,10 @@ class UserSubscriptionsService {
       paymentReference,
     });
 
-    const populated = await this.repository.findById(subscription._id)
-      .populate('subscriptionPlan');
+    const UserSubscription = this.repository.model;
+    const populated = await UserSubscription.findById(subscription._id)
+      .populate('subscriptionPlan')
+      .lean();
     
     return this.mapSubscriptionToDTO(populated);
   }

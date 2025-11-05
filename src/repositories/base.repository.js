@@ -8,7 +8,9 @@ class BaseRepository {
   }
 
   async findOne(filter = {}, projection = null, options = {}) {
-    return this.model.findOne(filter, projection, options).lean();
+    const { lean = true, ...otherOptions } = options;
+    const query = this.model.findOne(filter, projection, otherOptions);
+    return lean ? query.lean() : query;
   }
 
   async findMany(
@@ -34,12 +36,20 @@ class BaseRepository {
       .lean();
   }
 
+  async updateMany(filter, update, options = {}) {
+    return this.model.updateMany(filter, update, options);
+  }
+
   async deleteById(id) {
     return this.model.findByIdAndDelete(id).lean();
   }
 
   async count(filter = {}) {
     return this.model.countDocuments(filter);
+  }
+
+  async countDocuments(filter = {}) {
+    return this.count(filter);
   }
 
   async paginate(
