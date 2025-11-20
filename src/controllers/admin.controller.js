@@ -1,4 +1,4 @@
-const AdminService = require('../services/admin.service');
+const AdminService = require("../services/admin.service");
 
 const adminService = new AdminService({});
 
@@ -59,7 +59,7 @@ module.exports = {
     try {
       const { reason } = req.body;
       await adminService.banUser(req.params.id, reason);
-      res.json({ message: 'User banned successfully' });
+      res.json({ message: "User banned successfully" });
     } catch (e) {
       next(e);
     }
@@ -72,7 +72,7 @@ module.exports = {
   activateUser: async (req, res, next) => {
     try {
       await adminService.activateUser(req.params.id);
-      res.json({ message: 'User activated successfully' });
+      res.json({ message: "User activated successfully" });
     } catch (e) {
       next(e);
     }
@@ -114,6 +114,34 @@ module.exports = {
       const { startDate, endDate } = req.query;
       const revenue = await adminService.getRevenue({ startDate, endDate });
       res.json(revenue);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * GET /admin/financials?year=YYYY
+   * Monthly financial statistics (subscriptions vs commissions)
+   */
+  getFinancials: async (req, res, next) => {
+    try {
+      const { year } = req.query;
+      const data = await adminService.getFinancials(year);
+      res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * GET /admin/user-subscriptions
+   * List user subscription purchases (invoices) for admin
+   */
+  getUserSubscriptionsAdmin: async (req, res, next) => {
+    try {
+      const { page, pageSize, search } = req.query;
+      const data = await adminService.adminListUserSubscriptions({ page, pageSize, search });
+      res.json(data);
     } catch (e) {
       next(e);
     }
