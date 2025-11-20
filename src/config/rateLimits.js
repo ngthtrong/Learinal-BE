@@ -11,8 +11,8 @@ const env = require("./env");
  * 100 requests per 15 minutes per IP
  */
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 1 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 100 requests per windowMs
   message: {
     code: "RateLimitExceeded",
     message: "Too many requests from this IP, please try again later.",
@@ -31,8 +31,8 @@ const generalLimiter = rateLimit({
  * 5 requests per 15 minutes per IP
  */
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login attempts per windowMs
+  windowMs: 1 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 5 login attempts per windowMs
   message: {
     code: "RateLimitExceeded",
     message: "Too many authentication attempts, please try again later.",
@@ -51,8 +51,8 @@ const authLimiter = rateLimit({
  * 10 uploads per hour per user
  */
 const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
+  windowMs: 1 * 60 * 1000, // 1 hour
+  max: 100,
   message: {
     code: "RateLimitExceeded",
     message: "Upload limit exceeded, please try again later.",
@@ -72,7 +72,7 @@ const uploadLimiter = rateLimit({
  */
 const expensiveLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
+  max: 100,
   message: {
     code: "RateLimitExceeded",
     message: "Operation limit exceeded, please try again later.",
@@ -90,8 +90,8 @@ const expensiveLimiter = rateLimit({
  * 100 requests per minute (generous for legitimate webhooks)
  */
 const webhookLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100,
+  windowMs: 1 * 30 * 1000, // 1 minute
+  max: 1000,
   message: {
     code: "RateLimitExceeded",
     message: "Webhook rate limit exceeded.",
