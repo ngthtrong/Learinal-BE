@@ -3,6 +3,16 @@ class BaseRepository {
     this.model = model;
   }
 
+  // Generic find (not paginated) used for enrichment lookups.
+  async find(filter = {}, projection = null, options = {}) {
+    const { sort, limit, skip, lean = true } = options;
+    let query = this.model.find(filter, projection);
+    if (sort) query = query.sort(sort);
+    if (typeof skip === 'number') query = query.skip(skip);
+    if (typeof limit === 'number') query = query.limit(limit);
+    return lean ? query.lean() : query;
+  }
+
   async findById(id, projection = null) {
     return this.model.findById(id, projection).lean();
   }
