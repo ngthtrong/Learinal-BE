@@ -42,6 +42,7 @@ router.post(
 router.get("/:id", authenticateJWT, cacheResponse({ ttl: 600 }), controller.get);
 router.patch("/:id", authenticateJWT, controller.update);
 router.post("/:id/share", authenticateJWT, controller.share);
+router.post("/:id/unshare", authenticateJWT, controller.unshare);
 router.post("/:id/review", authenticateJWT, controller.requestReview);
 
 // GET /question-sets/:questionSetId/quiz-attempts - Get all quiz attempts for a question set
