@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: learinal-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - learinal-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: learinal-backend
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGO_URI: ${MONGO_URI}
+      REDIS_URI: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SEPAY_API_KEY: ${SEPAY_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      LOG_LEVEL: info
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - learinal-network
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'require("http").get("http://localhost:3000/health", (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: npm start
+
+  # Worker for background jobs
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: learinal-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MONGO_URI: ${MONGO_URI}
+      REDIS_URI: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER}
+      EMAIL_VERIFY_TEMPLATE_ID: ${EMAIL_VERIFY_TEMPLATE_ID}
+      PASSWORD_RESET_TEMPLATE_ID: ${PASSWORD_RESET_TEMPLATE_ID}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      SENTRY_DSN: ${SENTRY_DSN}
+      LOG_LEVEL: info
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - learinal-network
+    command: npm run worker
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  learinal-network:
+    driver: bridge

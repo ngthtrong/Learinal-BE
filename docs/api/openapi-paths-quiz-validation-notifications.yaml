@@ -1,0 +1,700 @@
+# OpenAPI Paths - Quiz, Validation, Notifications & Subscriptions Endpoints
+
+paths:
+  # ============= QUIZ ATTEMPTS ENDPOINTS =============
+  
+  /quiz-attempts:
+    post:
+      tags:
+        - Quiz Attempts
+      summary: Bắt đầu làm bài
+      description: |
+        Tạo một lượt làm bài thi mới.
+        
+        **Quy trình:**
+        1. Hệ thống tạo quiz attempt với `isCompleted = false`
+        2. Ghi lại `startedAt` timestamp
+        3. Trả về ID để track attempt này
+        4. User làm bài và submit khi hoàn thành
+        
+        **Rate Limit:** 30 requests/minute
+      operationId: createQuizAttempt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizAttemptCreate'
+      responses:
+        '201':
+          description: Bắt đầu làm bài thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Không tìm thấy bộ câu hỏi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /quiz-attempts/{id}:
+    get:
+      tags:
+        - Quiz Attempts
+      summary: Lấy chi tiết lượt làm bài
+      description: |
+        Lấy thông tin chi tiết của một lượt làm bài, bao gồm câu trả lời và điểm số.
+        
+        **Rate Limit:** 60 requests/minute
+      operationId: getQuizAttempt
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết lượt làm bài
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizAttempt'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /quiz-attempts/{id}/submit:
+    post:
+      tags:
+        - Quiz Attempts
+      summary: Nộp bài thi
+      description: |
+        Nộp bài thi và nhận kết quả chấm điểm.
+        
+        **Quy trình:**
+        1. Hệ thống nhận danh sách câu trả lời
+        2. So sánh với đáp án đúng
+        3. Tính điểm số
+        4. Cập nhật `isCompleted = true` và `completedAt`
+        5. Tạo commission record cho Expert (nếu bộ câu hỏi đã validated)
+        6. Trả về kết quả chi tiết
+        
+        **Lưu ý:** Chỉ có thể submit một lần cho mỗi attempt.
+        
+        **Rate Limit:** 30 requests/minute
+      operationId: submitQuizAttempt
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizAttemptSubmit'
+      responses:
+        '200':
+          description: Chấm điểm thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score:
+                    type: number
+                    description: Điểm số đạt được
+                    example: 85.5
+                  totalQuestions:
+                    type: integer
+                    description: Tổng số câu hỏi
+                    example: 20
+                  correctAnswers:
+                    type: integer
+                    description: Số câu trả lời đúng
+                    example: 17
+                  answers:
+                    type: array
+                    description: Chi tiết từng câu trả lời
+                    items:
+                      type: object
+                      properties:
+                        questionId:
+                          type: string
+                        selectedOptionIndex:
+                          type: integer
+                        isCorrect:
+                          type: boolean
+                        correctAnswerIndex:
+                          type: integer
+                        explanation:
+                          type: string
+                  completedAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Bài thi đã được submit hoặc dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                alreadyCompleted:
+                  value:
+                    code: "BadRequest"
+                    message: "Quiz attempt already completed"
+                invalidAnswers:
+                  value:
+                    code: "ValidationError"
+                    message: "Invalid answer format"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============= VALIDATION REQUESTS ENDPOINTS =============
+  
+  /validation-requests:
+    get:
+      tags:
+        - Validation Requests
+      summary: Lấy danh sách yêu cầu xác thực
+      description: |
+        Lấy danh sách validation requests.
+        
+        **Learner:** Xem yêu cầu của mình
+        **Expert:** Xem yêu cầu được gán
+        **Admin:** Xem tất cả yêu cầu
+        
+        **Rate Limit:** 60 requests/minute
+      operationId: listValidationRequests
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: status
+          in: query
+          description: Lọc theo trạng thái
+          schema:
+            type: string
+            enum: [Pending, Assigned, InProgress, Completed, Rejected]
+      responses:
+        '200':
+          description: Danh sách validation requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ValidationRequest'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /validation-requests/{id}:
+    get:
+      tags:
+        - Validation Requests
+      summary: Lấy chi tiết yêu cầu xác thực
+      description: |
+        Lấy thông tin chi tiết của một validation request.
+        
+        **Rate Limit:** 60 requests/minute
+      operationId: getValidationRequest
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết validation request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    patch:
+      tags:
+        - Validation Requests
+      summary: Cập nhật validation request
+      description: |
+        Cập nhật trạng thái hoặc gán Expert.
+        
+        **Admin:** Có thể gán Expert, cập nhật status
+        **Expert:** Có thể cập nhật status của request được gán
+        
+        **Rate Limit:** 30 requests/minute
+      operationId: updateValidationRequest
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [Assigned, InProgress, Completed]
+                expertId:
+                  type: string
+                  description: Gán Expert (Admin only)
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /validation-requests/{id}/complete:
+    patch:
+      tags:
+        - Validation Requests
+      summary: Hoàn thành xác thực (Expert only)
+      description: |
+        Expert hoàn thành xác thực và đưa ra quyết định.
+        
+        **Quy trình:**
+        1. Expert review bộ câu hỏi
+        2. Quyết định: Approved hoặc Rejected
+        3. Đưa ra feedback và corrected questions (nếu có)
+        4. Hệ thống cập nhật status bộ câu hỏi
+        5. Gửi notification cho Learner
+        
+        **Quyền:** Chỉ Expert được gán mới có thể complete
+        **Rate Limit:** 30 requests/minute
+      operationId: completeValidation
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum: [Approved, Rejected]
+                  example: "Approved"
+                feedback:
+                  type: string
+                  description: Nhận xét từ Expert
+                  example: "Bộ câu hỏi chất lượng tốt, một số câu cần điều chỉnh nhỏ"
+                correctedQuestions:
+                  type: array
+                  description: Danh sách câu hỏi đã được chỉnh sửa/cải thiện
+                  items:
+                    $ref: '#/components/schemas/Question'
+      responses:
+        '200':
+          description: Hoàn thành xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============= NOTIFICATIONS ENDPOINTS =============
+  
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Lấy danh sách thông báo
+      description: |
+        Lấy tất cả thông báo của user hiện tại.
+        
+        **Rate Limit:** 60 requests/minute
+      operationId: listNotifications
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: isRead
+          in: query
+          description: Lọc theo trạng thái đọc
+          schema:
+            type: boolean
+        - name: type
+          in: query
+          description: Lọc theo loại thông báo
+          schema:
+            type: string
+            enum: [System, QuestionSetReady, ValidationAssigned, ValidationComplete, SubscriptionExpiring, PaymentReceived]
+      responses:
+        '200':
+          description: Danh sách thông báo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  unreadCount:
+                    type: integer
+                    description: Số thông báo chưa đọc
+                    example: 5
+
+  /notifications/{id}:
+    patch:
+      tags:
+        - Notifications
+      summary: Đánh dấu đã đọc
+      description: |
+        Cập nhật trạng thái thông báo.
+        
+        **Rate Limit:** 30 requests/minute
+      operationId: updateNotification
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isRead:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+
+  /notifications/test:
+    post:
+      tags:
+        - Notifications
+      summary: Gửi thông báo test (Admin only)
+      description: |
+        Gửi thông báo test qua WebSocket.
+        
+        **Quyền:** Chỉ Admin
+      operationId: sendTestNotification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                message:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/broadcast:
+    post:
+      tags:
+        - Notifications
+      summary: Gửi thông báo broadcast (Admin only)
+      description: |
+        Gửi thông báo đến tất cả users đang online.
+        
+        **Quyền:** Chỉ Admin
+      operationId: broadcastNotification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                message:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /notifications/status:
+    get:
+      tags:
+        - Notifications
+      summary: Kiểm tra trạng thái WebSocket
+      description: |
+        Kiểm tra trạng thái kết nối WebSocket của user hiện tại.
+      operationId: getNotificationConnectionStatus
+      responses:
+        '200':
+          description: Trạng thái kết nối
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  connectedSince:
+                    type: string
+                    format: date-time
+                    nullable: true
+
+  # ============= SUBSCRIPTION PLANS ENDPOINTS =============
+  
+  /subscription-plans:
+    get:
+      tags:
+        - Subscriptions
+      summary: Lấy danh sách gói đăng ký
+      description: |
+        Lấy tất cả gói đăng ký đang hoạt động.
+        
+        **Public endpoint:** Không cần authentication
+      operationId: listSubscriptionPlans
+      security: []
+      responses:
+        '200':
+          description: Danh sách gói đăng ký
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionPlan'
+                      
+    post:
+      tags:
+        - Subscriptions
+      summary: Tạo gói đăng ký mới (Admin only)
+      description: |
+        Tạo gói đăng ký mới.
+        
+        **Quyền:** Chỉ Admin
+      operationId: createSubscriptionPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - tier
+                - price
+                - billingCycle
+                - entitlements
+              properties:
+                name:
+                  type: string
+                tier:
+                  type: string
+                  enum: [Free, Premium, Enterprise]
+                price:
+                  type: number
+                billingCycle:
+                  type: string
+                  enum: [Monthly, Yearly]
+                entitlements:
+                  type: object
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /subscription-plans/{id}:
+    get:
+      tags:
+        - Subscriptions
+      summary: Lấy chi tiết gói đăng ký
+      description: |
+        Lấy thông tin chi tiết của một gói đăng ký.
+        
+        **Public endpoint:** Không cần authentication
+      operationId: getSubscriptionPlan
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết gói đăng ký
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    patch:
+      tags:
+        - Subscriptions
+      summary: Cập nhật gói đăng ký (Admin only)
+      description: |
+        Cập nhật thông tin gói đăng ký.
+        
+        **Quyền:** Chỉ Admin
+      operationId: updateSubscriptionPlan
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: number
+                entitlements:
+                  type: object
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          
+    delete:
+      tags:
+        - Subscriptions
+      summary: Archive gói đăng ký (Admin only)
+      description: |
+        Archive (ẩn) gói đăng ký - không xóa hoàn toàn.
+        
+        **Quyền:** Chỉ Admin
+      operationId: archiveSubscriptionPlan
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '204':
+          description: Archive thành công
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============= USER SUBSCRIPTIONS ENDPOINTS =============
+  
+  /user-subscriptions/me:
+    get:
+      tags:
+        - Subscriptions
+      summary: Lấy đăng ký hiện tại
+      description: |
+        Lấy thông tin đăng ký đang hoạt động của user hiện tại.
+      operationId: getMySubscription
+      responses:
+        '200':
+          description: Thông tin đăng ký
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/UserSubscription'
+                  - type: object
+                    properties:
+                      plan:
+                        $ref: '#/components/schemas/SubscriptionPlan'
+        '404':
+          description: Không có đăng ký hoạt động
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /user-subscriptions:
+    post:
+      tags:
+        - Subscriptions
+      summary: Tạo đăng ký mới
+      description: |
+        Tạo đăng ký mới sau khi thanh toán thành công.
+        
+        **Quy trình:**
+        1. User chọn gói và thanh toán
+        2. Sau khi nhận webhook payment thành công
+        3. Hệ thống tạo user subscription
+        4. Cập nhật user.subscriptionPlanId và subscriptionStatus
+      operationId: createUserSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - planId
+              properties:
+                planId:
+                  type: string
+                  description: ID gói đăng ký
+      responses:
+        '201':
+          description: Đăng ký thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /user-subscriptions/{id}:
+    delete:
+      tags:
+        - Subscriptions
+      summary: Hủy đăng ký
+      description: |
+        Hủy đăng ký hiện tại.
+        
+        **Lưu ý:** 
+        - Đăng ký vẫn còn hiệu lực đến hết thời hạn
+        - autoRenew được set thành false
+        - Không hoàn tiền
+      operationId: cancelUserSubscription
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Hủy thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Subscription cancelled successfully"
+                  subscription:
+                    $ref: '#/components/schemas/UserSubscription'
+        '404':
+          $ref: '#/components/responses/NotFound'

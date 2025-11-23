@@ -1,271 +1,400 @@
-# Backend Delivery Plan – Learinal (MVP v0.1)
 
-Cập nhật: 2025-10-25 • Phạm vi: API cho MVP v0.1 theo SRS/SDD
+# 🚀 Quick Start - Learinal Backend
 
-Tham chiếu:
-
-- SRS: `docs/SRS for Learinal.md`
-- SDD: `docs/SDD_Learinal.md`
-- OpenAPI: `docs/api/learinal-openapi.yaml` (tóm tắt: `docs/api/learinal-openapi-overview.md`)
+Hướng dẫn nhanh để chạy dự án trong 5 phút!
 
 ---
 
-## 1) Nguyên tắc & Mục tiêu
+## Phương án 1: Chạy Local (Development)
 
-- Ưu tiên đường găng để có luồng end-to-end: Đăng nhập → tạo Subject → upload Document → sinh QuestionSet → làm bài Quiz → yêu cầu Validation.
-- Bám hợp đồng OpenAPI 3.1, chuẩn hóa error `{ code, message, details }`, JWT + RBAC, phân trang `{ items, meta }`.
-- Tách nền tảng (auth/RBAC/error/rate-limit) và xử lý LLM (ingestion/summarize/generate) qua hàng đợi (worker) để đảm bảo hiệu năng.
+### Bước 1: Cài đặt Dependencies
 
----
+```bash
+# Clone repo
+git clone https://github.com/ngthtrong/Learinal-BE.git
+cd Learinal-BE
 
-## 2) Kế hoạch không phụ thuộc giữa BE1/BE2/BE3 (phát triển song song)
+# Cài đặt packages
+npm install
+```
 
-Mục tiêu: Mỗi track (BE1/BE2/BE3) có thể phát triển và kiểm thử độc lập mà không chờ module khác, nhờ cơ chế mock/stub và feature flags. Lịch tích hợp end-to-end được tách ở cuối mục.
+### Bước 2: Chuẩn bị Database
 
-Chế độ chung cho “không phụ thuộc” (áp dụng cho mọi track):
+**Option A: Docker (Recommended)**
 
-- Cho phép bật STUB/REAL qua biến môi trường: `AUTH_MODE=stub|real`, `LLM_MODE=stub|real`, `QUEUE_MODE=stub|real`, `STORAGE_MODE=local|s3`, `PAYMENT_MODE=stub|real`.
-- Chuẩn test dev: chấp nhận header `X-Dev-User-Id` và `X-Dev-User-Role` khi `AUTH_MODE=stub` để giả lập danh tính/role.
-- Cung cấp fixtures và in-memory repo để chạy tích hợp tối thiểu không cần Mongo (tùy chọn); khi `DB_MODE=memory|mongo`.
-- Cho phép tạo dữ liệu seed bằng script riêng cho từng track (fixtures JSON).
+```bash
+# Chạy MongoDB
+docker run -d -p 27017:27017 --name learinal-mongo \
+  -e MONGO_INITDB_ROOT_USERNAME=admin \
+  -e MONGO_INITDB_ROOT_PASSWORD=adminpass \
+  mongo:7
 
-Song song theo track:
+# Chạy Redis
+docker run -d -p 6379:6379 --name learinal-redis redis:7-alpine
+```
 
-1. BE1 – Health + Auth + Users + Nền tảng (ĐỘC LẬP)
+**Option B: Local Installation**
 
-   - Endpoints triển khai ngay ở `AUTH_MODE=stub` (không chờ Google OIDC), sau đó chuyển `real`:
-     - GET `/health`
-     - POST `/auth/exchange` (stub: trả JWT giả hợp lệ), POST `/auth/refresh`
-     - GET `/users/me`, PATCH `/users/me` (ETag/If-None-Match sẵn có)
-     - GET `/admin/users`
-   - Middleware hạ tầng (dùng được cho cả BE2/BE3 nhưng không bắt buộc trong chế độ stub):
-     - JWT bearer (stub hoặc verify real), RBAC (dựa trên `X-Dev-User-Role` khi stub)
-     - Error handler chuẩn hóa `{code,message,details}`
-     - Rate-limit headers, pagination helpers
-     - Idempotency-Key và ETag infra
-2. BE2 – Subjects + Documents + Ingestion/Summary (ĐỘC LẬP)
+- MongoDB: https://www.mongodb.com/docs/manual/installation/
+- Redis: https://redis.io/docs/getting-started/installation/
 
-   - Khi `AUTH_MODE=stub`, nhận `X-Dev-User-Id/Role` để xác định ownership, không cần BE1 hoàn tất.
-   - Endpoints:
-     - GET/POST `/subjects`, GET/PATCH/DELETE `/subjects/{id}`
-     - POST `/documents`, GET `/documents/{id}`, GET `/documents/{id}/summary`
-   - Adapters có thể chạy ở stub mode:
-     - StorageAdapter: `STORAGE_MODE=local` (lưu thư mục tạm), validate `.pdf/.docx/.txt` ≤ 20MB.
-     - LLMAdapter: `LLM_MODE=stub` trả về summary giả, chuyển `real` sau.
-     - Queue: `QUEUE_MODE=stub` (run in-process) trước khi dùng Redis/RabbitMQ.
-   - Worker: extract text + summarize (retry/backoff) hoạt động nội bộ trong stub mode.
-3. BE3 – QuestionSets + QuizAttempts + Validation + Notifications (ĐỘC LẬP)
+### Bước 3: Tạo file .env
 
-   - Chạy với `AUTH_MODE=stub` và data fixtures nếu BE2 chưa có:
-     - Cho phép tạo QuestionSet từ payload custom khi `LLM_MODE=stub` (không phụ thuộc Documents thực tế).
-   - Endpoints:
-     - GET `/question-sets`, POST `/question-sets/generate`, GET/PATCH `/question-sets/{id}`, POST `/question-sets/{id}/share`
-     - POST `/quiz-attempts`, GET `/quiz-attempts/{id}`, POST `/quiz-attempts/{id}/submit`
-     - POST `/question-sets/{id}/review`, GET `/validation-requests`, GET/PATCH `/validation-requests/{id}`
-     - GET `/notifications`, PATCH `/notifications/{id}`
-   - Logic:
-     - Enforce `difficultyLevel ∈ {Biết, Hiểu, Vận dụng, Vận dụng cao}`, `numQuestions ∈ [1..100]`, Idempotency-Key cho generate
-     - Scoring utility tách riêng, test độc lập
-     - Validation workflow có thể chạy với in-memory repo trước khi nối Mongo và MQ thực
+```bash
+# Copy file mẫu
+cp .env.example .env
+```
 
-Lịch tích hợp end-to-end (không ảnh hưởng phát triển song song):
+**Nội dung .env tối thiểu:**
 
-- Bước 1: Bật `AUTH_MODE=real` (Google OIDC) ở BE1, còn lại giữ stub → kiểm thử Auth/Users.
-- Bước 2: BE2 chuyển `DB_MODE=mongo`, `STORAGE_MODE=s3` (hoặc giữ local), `LLM_MODE=real` riêng lẻ → kiểm thử Documents/summary.
-- Bước 3: BE3 nối với dữ liệu thực của BE2 (QuestionSets generate dùng document thực), `QUEUE_MODE=real` → chạy full flow.
+```env
+NODE_ENV=development
+PORT=3000
 
-Đường găng demo E2E gợi ý (chỉ cho stage tích hợp): 2 → 3 → 4 → 5 → 6 → 7 → 8 (Subscriptions/Admin/Webhooks bật sau). Track dev nội bộ vẫn không phụ thuộc như trên.
+# Database
+MONGO_URI=mongodb://admin:adminpass@localhost:27017/learinal-dev?authSource=admin
+REDIS_URI=redis://localhost:6379
 
----
+# JWT (generate random strings)
+JWT_SECRET=my-super-secret-jwt-key-min-32-characters
+JWT_REFRESH_SECRET=my-super-secret-refresh-key-min-32-characters
 
-## 3) Phân công cho team backend (3 thành viên)
+# LLM (cần ít nhất 1)
+OPENAI_API_KEY=sk-your-openai-api-key
+# hoặc
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key
 
-Mỗi người own theo domain + service, chịu trách nhiệm controller/service/repo/tests/docs.
+# Storage (local cho dev)
+STORAGE_MODE=local
 
-### BE1 – Auth & Users & Nền tảng (RBAC/ETag/Errors)
+# Log
+LOG_LEVEL=debug
+```
 
-- Endpoints: `/health`, `/auth/*`, `/users/me`, `/admin/users`
-- Infra: JWT verify (stub/real), role guard (stub/real), error formatter, rate-limit headers, pagination helpers, ETag/If-None-Match, Idempotency-Key
-- Data: `users` (unique email, indexes theo SRS/DB schema)
-- Acceptance (không phụ thuộc):
-  - Chạy được hoàn toàn với `AUTH_MODE=stub` (JWT giả lập hợp lệ) và chuyển sang `real` không đổi hợp đồng API
-  - Đổi code → token (stub/real), refresh token OK; 401/403 theo Error schema
-  - GET/PATCH `/users/me` có ETag; PATCH trả 412 khi ETag mismatch
-  - RBAC theo role (stub dựa `X-Dev-User-Role`); rate-limit headers; logs có request-id
-  - Tests ≥ 90% controller/service; contract khớp OpenAPI
+### Bước 4: Seed dữ liệu (Optional)
 
-### BE2 – Subjects & Documents & Ingestion/LLM Worker
+```bash
+npm run seed:plans
+```
 
-- Endpoints: `/subjects*`, `/documents*`, `/documents/{id}/summary`
-- Adapters: StorageAdapter (local/S3), LLMAdapter (Gemini), Queue (Redis→RabbitMQ TBC) – tất cả đều có chế độ stub
-- Jobs: extract text + summarize async với retry/backoff; DLQ khi lỗi không phục hồi
-- Acceptance (không phụ thuộc):
-  - Hoạt động full với `AUTH_MODE=stub` (dựa `X-Dev-User-Id`), `DB_MODE=memory|mongo`, `STORAGE_MODE=local`, `LLM_MODE=stub`
-  - Upload `.pdf/.docx/.txt` ≤20MB: 415 nếu sai loại, 413 nếu quá dung lượng
-  - Tài liệu chuyển trạng thái; summary hiển thị khi job Completed; GET summary hợp lệ
-  - Retry/backoff cho LLM (stub/real), metrics cơ bản; indexes Mongo theo `mongodb-schema.md`
-  - Tests ≥ 85% (+ integration cho worker happy/error/timeout)
+### Bước 5: Chạy Server
 
-### BE3 – QuestionSets, QuizAttempts, Validation, Notifications
+```bash
+# Terminal 1: API Server
+npm run dev
 
-- Endpoints: `/question-sets*`, `/quiz-attempts*`, `/question-sets/{id}/review`, `/validation-requests*`, `/notifications*`
-- Domain:
-  - Generate đề: enforce `difficultyLevel ∈ {Biết, Hiểu, Vận dụng, Vận dụng cao}`, `numQuestions ∈ [1..100]`, `Idempotency-Key`
-  - Quiz scoring: tính điểm theo trọng số độ khó (SRS/`mongodb-schema.md`), lưu `score`, `userAnswers`
-  - Validation: tạo `ValidationRequest` (Queued), list/patch theo vai trò Expert/Admin
-  - Share link: tạo/rotate, unique index
-- Acceptance (không phụ thuộc):
-  - Chạy full với `AUTH_MODE=stub`, `LLM_MODE=stub`, `DB_MODE=memory|mongo` mà không cần Documents thật
-  - POST `/question-sets/generate` trả 201 (sync stub) hoặc 202 (async) theo config; schema chuẩn; hỗ trợ Idempotency-Key
-  - Submit quiz: chấm điểm đúng; test biên: 0 đúng, tất cả đúng, độ khó pha trộn
-  - Validation: chuyển trạng thái, timestamps; Notifications: tạo tối thiểu theo sự kiện nội bộ (stub)
-  - Tests ≥ 85% (+ property-based test cho scoring – tùy chọn)
+# Terminal 2: Background Worker (optional)
+npm run worker
+```
+
+✅ **Server đang chạy tại:** http://localhost:3000
+
+### Bước 6: Test API
+
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# Expected response:
+# {"status":"healthy","timestamp":"...","uptime":...}
+```
 
 ---
 
-## 4) Lộ trình 2 sprint (khuyến nghị)
+## Phương án 2: Docker Compose (Fastest)
 
-### Sprint 1 (2 tuần): Phát triển song song ở chế độ stub (không phụ thuộc)
+### Bước 1: Clone & Setup
 
-- BE1: `/health`, `/auth/*` (stub), `/users/me`, RBAC (stub), errors, pagination helpers, ETag/Idempotency infra
-- BE2: `/subjects*`, `/documents` upload/GET, worker (extract) chạy `QUEUE_MODE=stub`, trạng thái Uploading→Processing→Completed/Error
-- BE3: `/question-sets` (GET), `/question-sets/generate` (201 sync stub, 202 async stub), `/question-sets/{id}` GET/PATCH, `/question-sets/{id}/share`
-- Mốc demo nội bộ: Từng track demo độc lập bằng stub auth/llm/queue/storage
+```bash
+git clone https://github.com/ngthtrong/Learinal-BE.git
+cd Learinal-BE
 
-### Sprint 2 (2 tuần): Tích hợp dần REAL, mở rộng tính năng
+# Tạo .env (xem nội dung ở trên)
+cp .env.example .env
+nano .env
+```
 
-- BE3: `/quiz-attempts` start/submit/score, `/question-sets/{id}/review`, `/validation-requests*`
-- BE2: `/documents/{id}/summary` hoàn thiện + resilience (retry/backoff, DLQ), tối ưu indexes, có thể bật `LLM_MODE=real`
-- BE1: `/admin/users`, harden rate-limit headers, logs/observability (request-id, user-id), có thể bật `AUTH_MODE=real`
-- Nice-to-have: `/notifications*`, `/subscription-plans`, `/user-subscriptions/me`, `/subscriptions` (PendingPayment)
-- Mốc demo tích hợp: Làm bài từ đề sinh ra (có/không LLM real), gửi yêu cầu thẩm định, nhận thông báo
+### Bước 2: Chạy Docker Compose
 
-> Sprint 3 (tùy chọn): Subscriptions đầy đủ, Webhook Stripe, performance pass, security hardening.
+```bash
+# Development mode (with hot reload)
+docker-compose -f docker-compose.dev.yml up
 
----
+# Hoặc production mode
+docker-compose up -d
+```
 
-## 2b) Danh sách toàn bộ endpoints (đối chiếu OpenAPI)
+✅ **Stack running:**
 
-Health
+- MongoDB: `localhost:27017`
+- Redis: `localhost:6379`
+- Backend API: `localhost:3000`
 
-- [ ] GET `/health`
+### Bước 3: Kiểm tra logs
 
-Auth
+```bash
+docker-compose logs -f backend
+```
 
-- [ ] POST `/auth/exchange`
-- [ ] POST `/auth/refresh`
+### Dừng stack
 
-Users
-
-- [ ] GET `/users/me`
-- [ ] PATCH `/users/me`
-
-Subjects
-
-- [ ] GET `/subjects`
-- [ ] POST `/subjects`
-- [ ] GET `/subjects/{id}`
-- [ ] PATCH `/subjects/{id}`
-- [ ] DELETE `/subjects/{id}`
-
-Documents
-
-- [ ] POST `/documents`
-- [ ] GET `/documents/{id}`
-- [ ] GET `/documents/{id}/summary`
-
-QuestionSets
-
-- [ ] GET `/question-sets`
-- [ ] POST `/question-sets/generate`
-- [ ] GET `/question-sets/{id}`
-- [ ] PATCH `/question-sets/{id}`
-- [ ] POST `/question-sets/{id}/share`
-
-QuizAttempts
-
-- [ ] POST `/quiz-attempts`
-- [ ] GET `/quiz-attempts/{id}`
-- [ ] POST `/quiz-attempts/{id}/submit`
-
-Validation
-
-- [ ] POST `/question-sets/{id}/review`
-- [ ] GET `/validation-requests`
-- [ ] GET `/validation-requests/{id}`
-- [ ] PATCH `/validation-requests/{id}`
-
-Notifications
-
-- [ ] GET `/notifications`
-- [ ] PATCH `/notifications/{id}`
-
-Subscriptions
-
-- [ ] GET `/subscription-plans`
-- [ ] GET `/user-subscriptions/me`
-- [ ] POST `/subscriptions`
-
-Admin
-
-- [ ] GET `/admin/users`
-
-Webhooks
-
-- [ ] POST `/webhooks/stripe`
-
-Ghi chú: Danh sách trên phản ánh toàn bộ bề mặt API trong `docs/api/learinal-openapi.yaml`. Không bổ sung endpoint mới ngoài phạm vi OpenAPI.
+```bash
+docker-compose down
+```
 
 ---
 
-## 5) Phụ thuộc & Rủi ro
+## 🧪 Test API với các tools
 
-- OAuth Google: cần clientId/secret (dev dùng mock hoặc OAuth playground); bảo vệ redirectUri
-- LLM chi phí/hạn mức: throttle phía app, queue tách tải, stub LLM cho test
-- Upload an toàn: kiểm MIME/extension, scan cơ bản (tối thiểu validate), local storage trước S3/CDN
-- Queue: Redis cho dev, nâng cấp RabbitMQ khi cần routing phức tạp
-- Công thức điểm/hoa hồng: bọc trong service/utility để thay đổi dễ dàng
+### 1. cURL
 
----
+```bash
+# Health check
+curl http://localhost:3000/health
 
-## 6) Definition of Done (DoD) – mỗi endpoint/module
+# Deep health check
+curl http://localhost:3000/health/deep
 
-- Hợp đồng khớp OpenAPI (`request`, `response`, mã lỗi, headers chuẩn)
-- Unit + integration tests đạt ngưỡng; CI xanh
-- RBAC, rate-limit, Idempotency-Key/ETag (nếu áp dụng) có test
-- Logging/metrics cơ bản; error shape thống nhất; trace id
-- Indexes Mongo phù hợp: user-scoped, status, createdAt; `shareLink` unique nếu dùng
-- Docs: README module + test collection (Postman/Thunder) hoặc kịch bản thử nhanh
+# Metrics
+curl http://localhost:3000/metrics
+```
 
----
+### 2. Postman
 
-## 7) Quality Gates (CI/CD)
+Import collection từ: `docs/postman/Learinal.postman_collection.json`
 
-- Build: PASS (cấu hình CI chạy build/test)
-- Lint/Typecheck: PASS (ESLint + TS nếu dùng TypeScript)
-- Tests: PASS (BE1 ≥90%, BE2/BE3 ≥85%)
-- Security basic: PASS (JWT verify, role guard, kiểm input, upload file size/type)
-- Observability: tối thiểu request-id, structured logs; rate-limit headers
+### 3. OpenAPI/Swagger
+
+Xem spec tại: `docs/api/learinal-openapi.yaml`
 
 ---
 
-## 8) Theo dõi & Deliverables
+## 📝 Development Workflow
 
-- Mốc demo Sprint 1, Sprint 2 như trên
-- Artefacts: OpenAPI cập nhật; bộ test HTTP; logs demo; checklist DoD đã tick
-- Liên kết: `docs/api/learinal-openapi.yaml`, `docs/mongodb-schema.md`, `docs/SDD_Learinal.md`
+### 1. Chạy tests
+
+```bash
+# All tests
+npm test
+
+# Unit tests only
+npm run test:unit
+
+# Integration tests
+npm run test:integration
+
+# Watch mode
+npm run test:watch
+```
+
+### 2. Lint & Format
+
+```bash
+# Check linting
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Format code
+npm run format
+```
+
+### 3. Hot Reload
+
+Server tự động restart khi code thay đổi (với `npm run dev`)
 
 ---
 
-## 9) Checklist thực thi nhanh (gợi ý)
+## 🔑 API Authentication Flow
 
-- [ ] JWT/RBAC/Errors/rate-limit/ETag nền tảng
-- [ ] Subjects CRUD
-- [ ] Documents upload + status + summary (worker)
-- [ ] QuestionSets list/generate/get/patch/share
-- [ ] QuizAttempts start/get/submit (scoring theo độ khó)
-- [ ] Validation request/list/patch
-- [ ] Notifications list/mark-read (tối thiểu)
-- [ ] Admin users list (tối thiểu)
-- [ ] Subscriptions (read-only + tạo đơn, TBC thanh toán)
-- [ ] Webhooks Stripe (sau)
+### 1. Lấy Access Token (Development)
+
+**Với OAuth stub mode:**
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/exchange \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "google",
+    "code": "test-code"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "accessToken": "eyJhbGci...",
+  "refreshToken": "eyJhbGci...",
+  "user": {...}
+}
+```
+
+### 2. Sử dụng Access Token
+
+```bash
+curl http://localhost:3000/api/v1/users/me \
+  -H "Authorization: Bearer eyJhbGci..."
+```
+
+### 3. Refresh Token
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "eyJhbGci..."
+  }'
+```
+
+---
+
+## 📊 Monitoring Endpoints
+
+| Endpoint         | Description           |
+| ---------------- | --------------------- |
+| `/health`      | Basic health check    |
+| `/healthz`     | Kubernetes liveness   |
+| `/readyz`      | Kubernetes readiness  |
+| `/livez`       | Liveness probe        |
+| `/health/deep` | Full dependency check |
+| `/metrics`     | Prometheus metrics    |
+
+---
+
+## 🐛 Troubleshooting
+
+### MongoDB connection error
+
+```bash
+# Kiểm tra MongoDB
+docker ps | grep mongo
+
+# Xem logs
+docker logs learinal-mongo
+
+# Restart
+docker restart learinal-mongo
+```
+
+### Redis connection error
+
+```bash
+# Test Redis connection
+redis-cli ping
+
+# Hoặc với Docker
+docker exec -it learinal-redis redis-cli ping
+```
+
+### Port 3000 đã được sử dụng
+
+```bash
+# Windows
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+
+# Mac/Linux
+lsof -i :3000
+kill -9 <PID>
+```
+
+### Dependencies issues
+
+```bash
+# Clear cache và reinstall
+rm -rf node_modules package-lock.json
+npm install
+```
+
+---
+
+## 📚 Next Steps
+
+✅ Server đang chạy
+✅ API responding
+
+**Tiếp theo:**
+
+1. Đọc [API Documentation](docs/api/learinal-openapi-overview.md)
+2. Import [Postman Collection](docs/postman/Learinal.postman_collection.json)
+3. Xem [Testing Guide](docs/TESTING_GUIDE.md)
+4. Đọc [README.md](README.md) để hiểu full architecture
+
+---
+
+## 💡 Tips
+
+### Tạo JWT Secret nhanh
+
+```bash
+# Node.js
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# OpenSSL
+openssl rand -hex 32
+```
+
+### Clear Redis cache
+
+```bash
+redis-cli FLUSHALL
+
+# Hoặc với Docker
+docker exec -it learinal-redis redis-cli FLUSHALL
+```
+
+### Reset MongoDB database
+
+```bash
+# Drop database
+mongosh "mongodb://admin:adminpass@localhost:27017/learinal-dev?authSource=admin" \
+  --eval "db.dropDatabase()"
+
+# Seed lại
+npm run seed:plans
+```
+
+---
+
+## 🎯 Common Tasks
+
+### Tạo user mới (Manual)
+
+```bash
+curl -X POST http://localhost:3000/api/v1/auth/exchange \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "google",
+    "code": "test-code",
+    "email": "user@example.com"
+  }'
+```
+
+### Upload document
+
+```bash
+curl -X POST http://localhost:3000/api/v1/documents \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@/path/to/document.pdf" \
+  -F "subjectId=SUBJECT_ID"
+```
+
+### Generate questions
+
+```bash
+curl -X POST http://localhost:3000/api/v1/question-sets/generate \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subjectId": "SUBJECT_ID",
+    "title": "Test Quiz",
+    "numQuestions": 10,
+    "difficulty": "Hiểu"
+  }'
+```
+
+---
+
+**Happy Coding! 🚀**

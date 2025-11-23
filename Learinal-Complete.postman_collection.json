@@ -1,0 +1,2388 @@
+{
+  "info": {
+    "name": "Learinal API - Complete Collection",
+    "_postman_id": "learinal-complete-2024-v1",
+    "description": "Complete Postman collection for Learinal Backend API\n\nIncludes:\n- ✅ Email/Password Authentication\n- ✅ Google OAuth 2.0 Flow  \n- ✅ All API endpoints\n- ✅ Admin endpoints\n- ✅ Payment & Subscriptions\n- ✅ Batch operations\n- ✅ Import/Export features\n\nBase URL: http://localhost:3001/api/v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subjectId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "questionSetId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "quizAttemptId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "validationRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "commissionRecordId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subscriptionPlanId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userSubscriptionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "flagId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oauthState",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "etag_me",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sepayQrId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏥 Health Check",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check API health status",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "📧 Email/Password Auth",
+          "item": [
+            {
+              "name": "POST /auth/register",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  const json = pm.response.json();",
+                      "  if (json.data && json.data.user) pm.collectionVariables.set(\"userId\", json.data.user.id);",
+                      "  if (json.data && json.data.accessToken) pm.collectionVariables.set(\"accessToken\", json.data.accessToken);",
+                      "  if (json.data && json.data.refreshToken) pm.collectionVariables.set(\"refreshToken\", json.data.refreshToken);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Test User\",\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/register",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "Register new user with email and password",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/login",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const json = pm.response.json();",
+                      "  if (json.data && json.data.accessToken) pm.collectionVariables.set(\"accessToken\", json.data.accessToken);",
+                      "  if (json.data && json.data.refreshToken) pm.collectionVariables.set(\"refreshToken\", json.data.refreshToken);",
+                      "  if (json.data && json.data.user) pm.collectionVariables.set(\"userId\", json.data.user.id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "Login with email and password",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/verify-email",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"<verification_token_from_email>\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/verify-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "verify-email"
+                  ]
+                },
+                "description": "Verify email address with token",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "GET /auth/verify-email?token=...",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/verify-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "verify-email"
+                  ],
+                  "query": [
+                    {
+                      "key": "token",
+                      "value": "<verification_token>"
+                    }
+                  ]
+                },
+                "description": "Verify email via GET (for clicking links in emails)",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/resend-verification",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"testuser@example.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/resend-verification",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "resend-verification"
+                  ]
+                },
+                "description": "Resend verification email",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/forgot-password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"testuser@example.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/forgot-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "forgot-password"
+                  ]
+                },
+                "description": "Request password reset email",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/reset-password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"<reset_token_from_email>\",\n  \"newPassword\": \"NewSecurePass456!\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/reset-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "reset-password"
+                  ]
+                },
+                "description": "Reset password with token from email",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔵 Google OAuth Flow",
+          "item": [
+            {
+              "name": "GET /auth/config",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const json = pm.response.json();",
+                      "  console.log(\"OAuth Config:\", json);",
+                      "  console.log(\"\");",
+                      "  console.log(\"To authenticate with Google:\");",
+                      "  console.log(\"1. Get OAuth state from /auth/state\");",
+                      "  console.log(\"2. Visit Google auth URL with state\");",
+                      "  console.log(\"3. Exchange code for tokens via /auth/exchange\");",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/config",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "config"
+                  ]
+                },
+                "description": "Get OAuth configuration (client ID, redirect URI, etc.)",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "GET /auth/state",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const json = pm.response.json();",
+                      "  if (json.state) {",
+                      "    pm.collectionVariables.set(\"oauthState\", json.state);",
+                      "    console.log(\"OAuth State:\", json.state);",
+                      "    console.log(\"TTL:\", json.ttlMs, \"ms\");",
+                      "    console.log(\"\");",
+                      "    console.log(\"Next: Visit the Google OAuth URL shown in the response\");",
+                      "  }",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/state",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "state"
+                  ],
+                  "query": [
+                    {
+                      "key": "manual",
+                      "value": "false",
+                      "description": "Set to true for manual OAuth flow testing"
+                    }
+                  ]
+                },
+                "description": "Generate OAuth state token and set secure cookie for CSRF protection",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            },
+            {
+              "name": "POST /auth/exchange (OAuth Code → JWT)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  const json = pm.response.json();",
+                      "  if (json.data && json.data.accessToken) pm.collectionVariables.set(\"accessToken\", json.data.accessToken);",
+                      "  if (json.data && json.data.refreshToken) pm.collectionVariables.set(\"refreshToken\", json.data.refreshToken);",
+                      "  if (json.data && json.data.user) pm.collectionVariables.set(\"userId\", json.data.user.id);",
+                      "  console.log(\"OAuth Exchange successful!\");",
+                      "  console.log(\"User:\", json.data.user);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"<oauth_code_from_google>\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/auth/exchange",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "exchange"
+                  ]
+                },
+                "description": "Exchange Google OAuth code for access/refresh tokens. After getting the code from Google OAuth callback, paste it here.",
+                "auth": {
+                  "type": "noauth"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set(\"accessToken\", json.data.accessToken);",
+                  "    console.log(\"Access token refreshed successfully!\");",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Refresh access token using refresh token",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Logout and revoke refresh token",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Users",
+      "item": [
+        {
+          "name": "GET /users/me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const etag = pm.response.headers.get(\"ETag\");",
+                  "if (etag) {",
+                  "  pm.collectionVariables.set(\"etag_me\", etag);",
+                  "  console.log(\"ETag captured:\", etag);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Get current user profile"
+          }
+        },
+        {
+          "name": "PATCH /users/me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-None-Match",
+                "value": "{{etag_me}}",
+                "description": "ETag for optimistic concurrency"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Updated Name\",\n  \"bio\": \"My new bio\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Update current user profile (uses ETag for concurrency control)"
+          }
+        },
+        {
+          "name": "DELETE /users/me",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Delete current user account"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📚 Subjects",
+      "item": [
+        {
+          "name": "GET /subjects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subjects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subjects"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List all subjects with pagination"
+          }
+        },
+        {
+          "name": "POST /subjects",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set(\"subjectId\", json.data.id);",
+                  "    console.log(\"Subject ID:\", json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectName\": \"Mathematics\",\n  \"description\": \"Advanced mathematics topics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subjects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subjects"
+              ]
+            },
+            "description": "Create a new subject"
+          }
+        },
+        {
+          "name": "GET /subjects/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subjects/{{subjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subjects",
+                "{{subjectId}}"
+              ]
+            },
+            "description": "Get subject by ID"
+          }
+        },
+        {
+          "name": "PATCH /subjects/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description for mathematics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subjects/{{subjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subjects",
+                "{{subjectId}}"
+              ]
+            },
+            "description": "Update subject"
+          }
+        },
+        {
+          "name": "DELETE /subjects/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subjects/{{subjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subjects",
+                "{{subjectId}}"
+              ]
+            },
+            "description": "Delete subject"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📄 Documents",
+      "item": [
+        {
+          "name": "POST /documents (Upload)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set(\"documentId\", json.data.id);",
+                  "    console.log(\"Document ID:\", json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents"
+              ]
+            },
+            "description": "Upload a document (PDF, DOCX, TXT, etc.)"
+          }
+        },
+        {
+          "name": "GET /documents/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}"
+              ]
+            },
+            "description": "Get document metadata"
+          }
+        },
+        {
+          "name": "GET /documents/:id/summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "summary"
+              ]
+            },
+            "description": "Get AI-generated document summary"
+          }
+        },
+        {
+          "name": "DELETE /documents/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}"
+              ]
+            },
+            "description": "Delete document"
+          }
+        }
+      ]
+    },
+    {
+      "name": "❓ Question Sets",
+      "item": [
+        {
+          "name": "GET /question-sets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/question-sets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List all question sets"
+          }
+        },
+        {
+          "name": "POST /question-sets/generate",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.request.headers.has(\"Idempotency-Key\")) {",
+                  "  pm.request.headers.add({key: \"Idempotency-Key\", value: pm.variables.replaceIn(\"{{$guid}}\")});",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set(\"questionSetId\", json.data.id);",
+                  "    console.log(\"Question Set ID:\", json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subjectId\": \"{{subjectId}}\",\n  \"title\": \"Algebra Practice\",\n  \"numQuestions\": 10,\n  \"difficulty\": \"Hiểu\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "generate"
+              ]
+            },
+            "description": "Generate questions using AI"
+          }
+        },
+        {
+          "name": "GET /question-sets/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/{{questionSetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "{{questionSetId}}"
+              ]
+            },
+            "description": "Get question set by ID"
+          }
+        },
+        {
+          "name": "PATCH /question-sets/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Title\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/{{questionSetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "{{questionSetId}}"
+              ]
+            },
+            "description": "Update question set"
+          }
+        },
+        {
+          "name": "DELETE /question-sets/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/{{questionSetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "{{questionSetId}}"
+              ]
+            },
+            "description": "Delete question set"
+          }
+        },
+        {
+          "name": "POST /question-sets/:id/share",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/{{questionSetId}}/share",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "{{questionSetId}}",
+                "share"
+              ]
+            },
+            "description": "Share question set publicly"
+          }
+        },
+        {
+          "name": "POST /question-sets/:id/review",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/question-sets/{{questionSetId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "question-sets",
+                "{{questionSetId}}",
+                "review"
+              ]
+            },
+            "description": "Request expert review for question set"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎯 Quiz Attempts",
+      "item": [
+        {
+          "name": "POST /quiz-attempts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set(\"quizAttemptId\", json.data.id);",
+                  "    console.log(\"Quiz Attempt ID:\", json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setId\": \"{{questionSetId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quiz-attempts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quiz-attempts"
+              ]
+            },
+            "description": "Start a new quiz attempt"
+          }
+        },
+        {
+          "name": "GET /quiz-attempts/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quiz-attempts/{{quizAttemptId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quiz-attempts",
+                "{{quizAttemptId}}"
+              ]
+            },
+            "description": "Get quiz attempt details"
+          }
+        },
+        {
+          "name": "POST /quiz-attempts/:id/submit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"questionId\": \"q1\",\n      \"selectedOptionIndex\": 1\n    },\n    {\n      \"questionId\": \"q2\",\n      \"selectedOptionIndex\": 0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quiz-attempts/{{quizAttemptId}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quiz-attempts",
+                "{{quizAttemptId}}",
+                "submit"
+              ]
+            },
+            "description": "Submit quiz answers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "✅ Validation Requests",
+      "item": [
+        {
+          "name": "GET /validation-requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/validation-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validation-requests"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List validation requests"
+          }
+        },
+        {
+          "name": "GET /validation-requests/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validation-requests",
+                "{{validationRequestId}}"
+              ]
+            },
+            "description": "Get validation request by ID"
+          }
+        },
+        {
+          "name": "PATCH /validation-requests/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Assigned\",\n  \"expertId\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validation-requests",
+                "{{validationRequestId}}"
+              ]
+            },
+            "description": "Update validation request status"
+          }
+        },
+        {
+          "name": "PATCH /validation-requests/:id/complete (Expert)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"Approved\",\n  \"feedback\": \"Great work! All questions are accurate.\",\n  \"correctedQuestions\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/validation-requests/{{validationRequestId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "validation-requests",
+                "{{validationRequestId}}",
+                "complete"
+              ]
+            },
+            "description": "Complete validation (Expert only)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Commission Records",
+      "item": [
+        {
+          "name": "GET /commission-records",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/commission-records",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "commission-records"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List commission records (Expert/Admin)"
+          }
+        },
+        {
+          "name": "GET /commission-records/summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/commission-records/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "commission-records",
+                "summary"
+              ]
+            },
+            "description": "Get commission summary (Expert)"
+          }
+        },
+        {
+          "name": "GET /commission-records/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/commission-records/{{commissionRecordId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "commission-records",
+                "{{commissionRecordId}}"
+              ]
+            },
+            "description": "Get commission record by ID"
+          }
+        },
+        {
+          "name": "PATCH /commission-records/:id/mark-paid (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentReference\": \"BANK_TRANSFER_98765\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/commission-records/{{commissionRecordId}}/mark-paid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "commission-records",
+                "{{commissionRecordId}}",
+                "mark-paid"
+              ]
+            },
+            "description": "Mark commission as paid (Admin only)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Subscription Plans",
+      "item": [
+        {
+          "name": "GET /subscription-plans (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscription-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription-plans"
+              ]
+            },
+            "description": "List all subscription plans (public)",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "POST /subscription-plans (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.plan && json.data.plan.id) {",
+                  "    pm.collectionVariables.set(\"subscriptionPlanId\", json.data.plan.id);",
+                  "    console.log(\"Subscription Plan ID:\", json.data.plan.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planName\": \"Premium Plan\",\n  \"description\": \"Full access to all features\",\n  \"billingCycle\": \"Monthly\",\n  \"price\": 99000,\n  \"entitlements\": {\n    \"maxMonthlyTestGenerations\": 100,\n    \"maxValidationRequests\": 50,\n    \"priorityProcessing\": true,\n    \"shareLimits\": {\n      \"canShare\": true,\n      \"maxSharedUsers\": 20\n    },\n    \"maxSubjects\": 50\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscription-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription-plans"
+              ]
+            },
+            "description": "Create subscription plan (Admin only)"
+          }
+        },
+        {
+          "name": "GET /subscription-plans/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription-plans",
+                "{{subscriptionPlanId}}"
+              ]
+            },
+            "description": "Get subscription plan by ID",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "PATCH /subscription-plans/:id (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\",\n  \"price\": 89000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription-plans",
+                "{{subscriptionPlanId}}"
+              ]
+            },
+            "description": "Update subscription plan (Admin only)"
+          }
+        },
+        {
+          "name": "DELETE /subscription-plans/:id (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscription-plans/{{subscriptionPlanId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription-plans",
+                "{{subscriptionPlanId}}"
+              ]
+            },
+            "description": "Archive subscription plan (Admin only)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔑 User Subscriptions",
+      "item": [
+        {
+          "name": "GET /user-subscriptions/me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/user-subscriptions/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-subscriptions",
+                "me"
+              ]
+            },
+            "description": "Get current user subscription status"
+          }
+        },
+        {
+          "name": "POST /user-subscriptions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.subscription && json.data.subscription.id) {",
+                  "    pm.collectionVariables.set(\"userSubscriptionId\", json.data.subscription.id);",
+                  "    console.log(\"User Subscription ID:\", json.data.subscription.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{subscriptionPlanId}}\",\n  \"paymentReference\": \"PAYMENT_REF_12345\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-subscriptions"
+              ]
+            },
+            "description": "Create user subscription"
+          }
+        },
+        {
+          "name": "DELETE /user-subscriptions/:id (Cancel)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/user-subscriptions/{{userSubscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-subscriptions",
+                "{{userSubscriptionId}}"
+              ]
+            },
+            "description": "Cancel subscription"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 Notifications",
+      "item": [
+        {
+          "name": "GET /notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List user notifications"
+          }
+        },
+        {
+          "name": "PATCH /notifications/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isRead\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notificationId}}"
+              ]
+            },
+            "description": "Mark notification as read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛡️ Moderation",
+      "item": [
+        {
+          "name": "POST /moderation/flag",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contentType\": \"QuestionSet\",\n  \"contentId\": \"{{questionSetId}}\",\n  \"reason\": \"Inappropriate content\",\n  \"details\": \"Contains offensive material\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/moderation/flag",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "flag"
+              ]
+            },
+            "description": "Flag content for moderation"
+          }
+        },
+        {
+          "name": "GET /moderation/flags (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/moderation/flags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "flags"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List moderation flags (Admin only)"
+          }
+        },
+        {
+          "name": "PATCH /moderation/flags/:id/review (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"Remove\",\n  \"moderatorNotes\": \"Content violates community guidelines\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/moderation/flags/{{flagId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "flags",
+                "{{flagId}}",
+                "review"
+              ]
+            },
+            "description": "Review flag (Admin only)"
+          }
+        },
+        {
+          "name": "PATCH /moderation/flags/:id/dismiss (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"moderatorNotes\": \"False report\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/moderation/flags/{{flagId}}/dismiss",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "flags",
+                "{{flagId}}",
+                "dismiss"
+              ]
+            },
+            "description": "Dismiss flag (Admin only)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 Search",
+      "item": [
+        {
+          "name": "GET /search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "mathematics"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Global search across content"
+          }
+        },
+        {
+          "name": "GET /search/question-sets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search/question-sets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search",
+                "question-sets"
+              ],
+              "query": [
+                {
+                  "key": "difficulty",
+                  "value": "Hiểu"
+                },
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Advanced question set filtering"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Batch Operations",
+      "item": [
+        {
+          "name": "POST /batch/question-sets/delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"id1\",\n    \"id2\",\n    \"id3\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/batch/question-sets/delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "batch",
+                "question-sets",
+                "delete"
+              ]
+            },
+            "description": "Batch delete question sets (Expert/Admin)"
+          }
+        },
+        {
+          "name": "POST /batch/question-sets/publish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"id1\",\n    \"id2\",\n    \"id3\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/batch/question-sets/publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "batch",
+                "question-sets",
+                "publish"
+              ]
+            },
+            "description": "Batch publish question sets (Expert/Admin)"
+          }
+        },
+        {
+          "name": "POST /batch/question-sets/unpublish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"id1\",\n    \"id2\",\n    \"id3\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/batch/question-sets/unpublish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "batch",
+                "question-sets",
+                "unpublish"
+              ]
+            },
+            "description": "Batch unpublish question sets (Expert/Admin)"
+          }
+        },
+        {
+          "name": "PATCH /batch/question-sets/update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"id1\",\n    \"id2\",\n    \"id3\"\n  ],\n  \"updates\": {\n    \"difficulty\": \"Vận dụng\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/batch/question-sets/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "batch",
+                "question-sets",
+                "update"
+              ]
+            },
+            "description": "Batch update question sets (Expert/Admin)"
+          }
+        },
+        {
+          "name": "POST /batch/documents/delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"doc1\",\n    \"doc2\",\n    \"doc3\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/batch/documents/delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "batch",
+                "documents",
+                "delete"
+              ]
+            },
+            "description": "Batch delete documents"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📤 Export",
+      "item": [
+        {
+          "name": "GET /export/question-sets/:id/json",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/export/question-sets/{{questionSetId}}/json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "export",
+                "question-sets",
+                "{{questionSetId}}",
+                "json"
+              ]
+            },
+            "description": "Export question set as JSON"
+          }
+        },
+        {
+          "name": "GET /export/question-sets/:id/csv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/export/question-sets/{{questionSetId}}/csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "export",
+                "question-sets",
+                "{{questionSetId}}",
+                "csv"
+              ]
+            },
+            "description": "Export question set as CSV"
+          }
+        },
+        {
+          "name": "GET /export/question-sets/:id/pdf",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/export/question-sets/{{questionSetId}}/pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "export",
+                "question-sets",
+                "{{questionSetId}}",
+                "pdf"
+              ]
+            },
+            "description": "Export question set as PDF"
+          }
+        },
+        {
+          "name": "POST /export/question-sets/batch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    \"id1\",\n    \"id2\",\n    \"id3\"\n  ],\n  \"format\": \"json\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/export/question-sets/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "export",
+                "question-sets",
+                "batch"
+              ]
+            },
+            "description": "Batch export multiple question sets"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📥 Import",
+      "item": [
+        {
+          "name": "POST /import/question-sets/json",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import/question-sets/json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import",
+                "question-sets",
+                "json"
+              ]
+            },
+            "description": "Import question set from JSON file"
+          }
+        },
+        {
+          "name": "POST /import/question-sets/csv",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import/question-sets/csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import",
+                "question-sets",
+                "csv"
+              ]
+            },
+            "description": "Import question set from CSV file"
+          }
+        },
+        {
+          "name": "POST /import/question-sets/batch",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import/question-sets/batch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import",
+                "question-sets",
+                "batch"
+              ]
+            },
+            "description": "Batch import multiple question sets"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Payments (Sepay)",
+      "item": [
+        {
+          "name": "POST /payments/sepay/qr",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.qrId) {",
+                  "    pm.collectionVariables.set(\"sepayQrId\", json.data.qrId);",
+                  "    console.log(\"Sepay QR ID:\", json.data.qrId);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 99000,\n  \"description\": \"Premium subscription payment\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/sepay/qr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "sepay",
+                "qr"
+              ]
+            },
+            "description": "Generate Sepay QR code for payment"
+          }
+        },
+        {
+          "name": "GET /payments/sepay/transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/sepay/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "sepay",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List Sepay transactions (debug/ops)"
+          }
+        },
+        {
+          "name": "POST /payments/sepay/scan",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/sepay/scan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "sepay",
+                "scan"
+              ]
+            },
+            "description": "Scan for new Sepay transactions (Admin)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔗 Webhooks",
+      "item": [
+        {
+          "name": "POST /webhooks/sepay",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"TXN123456\",\n  \"amount\": 99000,\n  \"status\": \"success\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/sepay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "sepay"
+              ]
+            },
+            "description": "Sepay webhook callback (external)",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin",
+      "item": [
+        {
+          "name": "GET /admin/users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "role",
+                  "value": "",
+                  "description": "Filter by role: Learner, Expert, Admin"
+                }
+              ]
+            },
+            "description": "List all users (Admin only)"
+          }
+        }
+      ]
+    }
+  ]
+}

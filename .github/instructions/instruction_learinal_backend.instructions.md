@@ -6,7 +6,7 @@ Bạn là LLM hỗ trợ triển khai backend Learinal theo kiến trúc Express
 
 - Nhiệm vụ: Sinh mã và/hoặc đề xuất thay đổi cho backend API Learinal theo OpenAPI 3.1 và SDD/MongoDB schema đi kèm.
 - Phạm vi: Web backend (không mobile native), API JSON, bảo mật OAuth/JWT, MongoDB, xử lý nền (jobs) cho tác vụ LLM/email/ingestion.
-- Không làm: UI, mobile app, các tính năng ngoài phạm vi SRS 0.1.
+- Không làm: UI, mobile app, các tính năng ngoài phạm vi SRS
 
 ### 2) Công nghệ bắt buộc
 
@@ -20,10 +20,10 @@ Bạn là LLM hỗ trợ triển khai backend Learinal theo kiến trúc Express
   - Mặc định truy vấn đọc với `.lean()` tại repository (trừ khi cần middleware/hook trên document).
 - Auth: OAuth 2.0 (Google) + JWT bearer trên API.
 - LLM: Google Gemini API (qua adapter nội bộ).
-- Email: SendGrid/SES (adapter).
+- Email: SendGrid(adapter).
 - Storage: S3/Cloudinary (adapter).
-- Payment (TBC): Stripe (webhook).
-- Queue: Redis/RabbitMQ (tối thiểu interface trừu tượng; worker tách biệt).
+- Payment: sepay(webhook).
+- Queue: Redis (tối thiểu interface trừu tượng; worker tách biệt).
 
 ### 3) Cấu trúc thư mục và lớp kiến trúc
 

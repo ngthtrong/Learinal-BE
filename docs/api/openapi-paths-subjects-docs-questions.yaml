@@ -1,0 +1,640 @@
+# OpenAPI Paths - Subjects, Documents & Question Sets Endpoints
+
+paths:
+  # ============= SUBJECTS ENDPOINTS =============
+  
+  /subjects:
+    get:
+      tags:
+        - Subjects
+      summary: Lấy danh sách môn học
+      description: |
+        Lấy danh sách tất cả môn học của user hiện tại.
+        
+        **Cache:** 5 phút
+        **Rate Limit:** 60 requests/minute
+      operationId: listSubjects
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortParam'
+        - $ref: '#/components/parameters/ifNoneMatchParam'
+      responses:
+        '200':
+          description: Danh sách môn học
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+    post:
+      tags:
+        - Subjects
+      summary: Tạo môn học mới
+      description: |
+        Tạo một môn học mới thuộc sở hữu của user hiện tại.
+      operationId: createSubject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectCreate'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subjects/{id}:
+    get:
+      tags:
+        - Subjects
+      summary: Lấy chi tiết môn học
+      description: |
+        Lấy thông tin chi tiết của một môn học.
+        
+        **Cache:** 5 phút
+      operationId: getSubject
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+        - $ref: '#/components/parameters/ifNoneMatchParam'
+      responses:
+        '200':
+          description: Chi tiết môn học
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          
+    patch:
+      tags:
+        - Subjects
+      summary: Cập nhật môn học
+      description: |
+        Cập nhật thông tin môn học.
+        
+        **Quyền:** Chỉ owner mới có thể cập nhật.
+      operationId: updateSubject
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subjectName:
+                  type: string
+                  minLength: 1
+                description:
+                  type: string
+                tableOfContents:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TableOfContentsItem'
+                summary:
+                  type: string
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    delete:
+      tags:
+        - Subjects
+      summary: Xóa môn học
+      description: |
+        Xóa một môn học và tất cả tài liệu, câu hỏi liên quan.
+        
+        **Cảnh báo:** Hành động này không thể hoàn tác!
+        **Quyền:** Chỉ owner mới có thể xóa.
+      operationId: deleteSubject
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '204':
+          description: Xóa thành công
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /subjects/{subjectId}/documents:
+    get:
+      tags:
+        - Subjects
+        - Documents
+      summary: Lấy tài liệu của môn học
+      description: |
+        Lấy danh sách tất cả tài liệu thuộc một môn học.
+        
+        **Cache:** 5 phút
+      operationId: listDocumentsBySubject
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: status
+          in: query
+          description: Lọc theo trạng thái
+          schema:
+            type: string
+            enum: [Uploading, Processing, Completed, Error]
+      responses:
+        '200':
+          description: Danh sách tài liệu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /subjects/{subjectId}/question-sets:
+    get:
+      tags:
+        - Subjects
+        - Question Sets
+      summary: Lấy bộ câu hỏi của môn học
+      description: |
+        Lấy danh sách bộ câu hỏi thuộc một môn học.
+        
+        **Cache:** 10 phút
+      operationId: listQuestionSetsBySubject
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: status
+          in: query
+          description: Lọc theo trạng thái
+          schema:
+            type: string
+            enum: [Pending, Processing, Draft, Public, PendingValidation, InReview, Validated, Rejected, PendingApproval, Published, Error]
+        - name: isShared
+          in: query
+          description: Lọc theo trạng thái chia sẻ
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Danh sách bộ câu hỏi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionSet'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  # ============= DOCUMENTS ENDPOINTS =============
+  
+  /documents:
+    post:
+      tags:
+        - Documents
+      summary: Tải lên tài liệu
+      description: |
+        Tải lên tài liệu mới (PDF, DOCX, TXT).
+        
+        **Giới hạn:**
+        - Kích thước file tối đa: 20MB
+        - Định dạng hỗ trợ: .pdf, .docx, .txt
+        
+        **Quy trình:**
+        1. File được upload và lưu vào storage
+        2. Trích xuất văn bản từ file (async)
+        3. Tạo tóm tắt bằng AI (async)
+        4. Cập nhật status: Uploading → Processing → Completed/Error
+        
+        **Rate Limit:** 10 requests/hour (upload limiter)
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - subjectId
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File tài liệu
+                subjectId:
+                  type: string
+                  description: ID môn học
+      responses:
+        '201':
+          description: Upload thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: File quá lớn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "PayloadTooLarge"
+                message: "File size exceeds 20MB limit"
+
+  /documents/{id}:
+    get:
+      tags:
+        - Documents
+      summary: Lấy chi tiết tài liệu
+      description: |
+        Lấy thông tin chi tiết của tài liệu.
+        
+        **Cache:** 5 phút
+      operationId: getDocument
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết tài liệu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    delete:
+      tags:
+        - Documents
+      summary: Xóa tài liệu
+      description: |
+        Xóa tài liệu và file lưu trữ.
+        
+        **Quyền:** Chỉ owner mới có thể xóa.
+      operationId: deleteDocument
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '204':
+          description: Xóa thành công
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{id}/summary:
+    get:
+      tags:
+        - Documents
+      summary: Lấy tóm tắt tài liệu
+      description: |
+        Lấy tóm tắt chi tiết của tài liệu.
+        
+        **Cache:** 5 phút
+      operationId: getDocumentSummary
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Tóm tắt tài liệu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summaryShort:
+                    type: string
+                    description: Tóm tắt ngắn (3-5 câu)
+                  summaryFull:
+                    type: string
+                    description: Tóm tắt đầy đủ
+                  summaryUpdatedAt:
+                    type: string
+                    format: date-time
+                  tableOfContents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TableOfContentsItem'
+
+  # ============= QUESTION SETS ENDPOINTS =============
+  
+  /question-sets:
+    get:
+      tags:
+        - Question Sets
+      summary: Lấy danh sách bộ câu hỏi
+      description: |
+        Lấy danh sách tất cả bộ câu hỏi của user hiện tại.
+        
+        **Cache:** 10 phút
+      operationId: listQuestionSets
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Danh sách bộ câu hỏi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionSet'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /question-sets/generate:
+    post:
+      tags:
+        - Question Sets
+      summary: Sinh câu hỏi tự động
+      description: |
+        Sinh bộ câu hỏi tự động từ tài liệu bằng AI (Google Gemini).
+        
+        **Quy trình:**
+        1. Hệ thống phân tích tài liệu trong môn học
+        2. Sử dụng LLM để sinh câu hỏi theo yêu cầu
+        3. Tạo bộ câu hỏi với status `Processing`
+        4. Xử lý async trong background job
+        5. Cập nhật status thành `Public` hoặc `Error`
+        6. Gửi notification khi hoàn thành
+        
+        **Giới hạn:**
+        - Free plan: 5 bộ/tháng
+        - Premium plan: 50 bộ/tháng
+        - Enterprise plan: Unlimited
+        
+        **Rate Limit:** 5 requests/hour (expensive operation)
+      operationId: generateQuestionSet
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionSetGenerate'
+      responses:
+        '202':
+          description: Đã nhận yêu cầu, đang xử lý
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: ID bộ câu hỏi
+                  status:
+                    type: string
+                    example: "Processing"
+                  message:
+                    type: string
+                    example: "Question set generation started"
+                  estimatedTime:
+                    type: integer
+                    description: Thời gian ước tính (giây)
+                    example: 120
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          description: Vượt quá giới hạn plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "QuotaExceeded"
+                message: "Monthly question set generation limit exceeded"
+                details:
+                  limit: 5
+                  used: 5
+                  upgradeUrl: "/subscription-plans"
+
+  /question-sets/{id}:
+    get:
+      tags:
+        - Question Sets
+      summary: Lấy chi tiết bộ câu hỏi
+      description: |
+        Lấy thông tin chi tiết bộ câu hỏi, bao gồm danh sách câu hỏi.
+        
+        **Cache:** 10 phút
+      operationId: getQuestionSet
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết bộ câu hỏi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSet'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          
+    patch:
+      tags:
+        - Question Sets
+      summary: Cập nhật bộ câu hỏi
+      description: |
+        Cập nhật thông tin hoặc chỉnh sửa câu hỏi trong bộ.
+        
+        **Quyền:** Chỉ owner mới có thể cập nhật.
+      operationId: updateQuestionSet
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  type: string
+                  enum: [Draft, Public, PendingValidation]
+                questions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Question'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSet'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /question-sets/{id}/share:
+    post:
+      tags:
+        - Question Sets
+      summary: Chia sẻ bộ câu hỏi
+      description: |
+        Tạo link chia sẻ công khai cho bộ câu hỏi.
+        
+        **Kết quả:**
+        - Cập nhật `isShared = true`
+        - Tạo `sharedUrl` duy nhất
+        - Bất kỳ ai có link đều có thể xem và làm bài
+      operationId: shareQuestionSet
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chia sẻ thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sharedUrl:
+                    type: string
+                    example: "https://learinal.com/share/abc123xyz"
+                  isShared:
+                    type: boolean
+                    example: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /question-sets/{id}/review:
+    post:
+      tags:
+        - Question Sets
+      summary: Yêu cầu xác thực
+      description: |
+        Gửi yêu cầu xác thực bộ câu hỏi bởi Expert.
+        
+        **Quy trình:**
+        1. User gửi yêu cầu
+        2. Hệ thống tạo `ValidationRequest`
+        3. Admin gán Expert
+        4. Expert review và feedback
+        5. Bộ câu hỏi được cập nhật status: Validated/Rejected
+        
+        **Giới hạn:**
+        - Free plan: Không cho phép
+        - Premium plan: 10 requests/tháng
+        - Enterprise plan: Unlimited
+      operationId: requestQuestionSetReview
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '201':
+          description: Yêu cầu đã được tạo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  validationRequestId:
+                    type: string
+                  status:
+                    type: string
+                    example: "Pending"
+                  message:
+                    type: string
+                    example: "Validation request created"
+        '402':
+          description: Vượt quá giới hạn plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /question-sets/{questionSetId}/quiz-attempts:
+    get:
+      tags:
+        - Question Sets
+        - Quiz Attempts
+      summary: Lấy lịch sử làm bài
+      description: |
+        Lấy danh sách các lượt làm bài của bộ câu hỏi này.
+        
+        **Cache:** 5 phút
+      operationId: listQuizAttemptsByQuestionSet
+      parameters:
+        - name: questionSetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: isCompleted
+          in: query
+          description: Lọc theo trạng thái hoàn thành
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Danh sách lượt làm bài
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuizAttempt'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'

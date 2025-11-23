@@ -1,0 +1,1110 @@
+# OpenAPI Paths - Admin, Payments, Export/Import, Batch, Search, Webhooks & Health Endpoints
+
+paths:
+  # ============= COMMISSION RECORDS ENDPOINTS =============
+  
+  /commission-records:
+    get:
+      tags:
+        - Commission Records
+      summary: Lấy danh sách hoa hồng
+      description: |
+        Lấy danh sách commission records.
+        
+        **Expert:** Xem hoa hồng của mình
+        **Admin:** Xem tất cả hoa hồng
+        
+        **Rate Limit:** 60 requests/minute
+      operationId: listCommissionRecords
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Paid, Cancelled]
+      responses:
+        '200':
+          description: Danh sách hoa hồng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommissionRecord'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /commission-records/summary:
+    get:
+      tags:
+        - Commission Records
+      summary: Tổng hợp hoa hồng (Expert only)
+      description: |
+        Lấy tổng hợp hoa hồng của Expert.
+        
+        **Quyền:** Chỉ Expert
+        **Rate Limit:** 60 requests/minute
+      operationId: getCommissionSummary
+      responses:
+        '200':
+          description: Tổng hợp hoa hồng
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalPending:
+                    type: number
+                    description: Tổng hoa hồng chưa thanh toán
+                  totalPaid:
+                    type: number
+                    description: Tổng hoa hồng đã thanh toán
+                  totalEarnings:
+                    type: number
+                    description: Tổng thu nhập
+                  thisMonth:
+                    type: number
+                    description: Hoa hồng tháng này
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /commission-records/{id}:
+    get:
+      tags:
+        - Commission Records
+      summary: Lấy chi tiết hoa hồng
+      description: |
+        **Rate Limit:** 60 requests/minute
+      operationId: getCommissionRecord
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết hoa hồng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionRecord'
+
+  /commission-records/{id}/mark-paid:
+    patch:
+      tags:
+        - Commission Records
+      summary: Đánh dấu đã thanh toán (Admin only)
+      description: |
+        Đánh dấu hoa hồng đã được thanh toán.
+        
+        **Quyền:** Chỉ Admin
+        **Rate Limit:** 30 requests/minute
+      operationId: markCommissionAsPaid
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionRecord'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============= PAYMENTS ENDPOINTS =============
+  
+  /payments/sepay/qr:
+    post:
+      tags:
+        - Payments
+      summary: Tạo QR thanh toán Sepay
+      description: |
+        Tạo mã QR động cho thanh toán qua Sepay.
+        
+        **Quy trình:**
+        1. Frontend gọi endpoint này với plan ID
+        2. Backend tạo QR code với description duy nhất
+        3. User quét QR và chuyển khoản
+        4. Sepay gửi webhook khi nhận tiền
+        5. Hệ thống tạo subscription cho user
+      operationId: createSepayQR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - planId
+              properties:
+                planId:
+                  type: string
+                  description: ID gói đăng ký
+      responses:
+        '200':
+          description: QR code đã được tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SepayQRResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /payments/sepay/transactions:
+    get:
+      tags:
+        - Payments
+      summary: Lấy danh sách giao dịch Sepay
+      description: |
+        Lấy danh sách giao dịch từ Sepay API.
+        
+        **Sử dụng:** Debug và operations
+      operationId: listSepayTransactionsGet
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Danh sách giao dịch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      
+    post:
+      tags:
+        - Payments
+      summary: Lấy danh sách giao dịch Sepay (POST)
+      description: |
+        Alternative POST endpoint để lấy giao dịch.
+      operationId: listSepayTransactionsPost
+      responses:
+        '200':
+          description: Danh sách giao dịch
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /payments/sepay/scan:
+    post:
+      tags:
+        - Payments
+      summary: Quét giao dịch Sepay
+      description: |
+        Quét và xử lý các giao dịch mới từ Sepay.
+        
+        **Lưu ý:** Endpoint này nên được bảo vệ với Admin role trong production.
+      operationId: scanSepayTransactions
+      responses:
+        '200':
+          description: Quét thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed:
+                    type: integer
+                    description: Số giao dịch đã xử lý
+
+  # ============= ADMIN ENDPOINTS =============
+  
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: Lấy danh sách users (Admin only)
+      description: |
+        Lấy danh sách tất cả users trong hệ thống.
+        
+        **Quyền:** Chỉ Admin
+        **Rate Limit:** 60 requests/minute
+      operationId: adminListUsers
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [Learner, Expert, Admin]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PendingActivation, Active, Deactivated]
+      responses:
+        '200':
+          description: Danh sách users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Lấy chi tiết user (Admin only)
+      operationId: adminGetUser
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: Chi tiết user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          
+    patch:
+      tags:
+        - Admin
+      summary: Cập nhật user (Admin only)
+      operationId: adminUpdateUser
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                status:
+                  type: string
+                  enum: [Active, Deactivated]
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /admin/users/{id}/ban:
+    post:
+      tags:
+        - Admin
+      summary: Ban user (Admin only)
+      description: |
+        Vô hiệu hóa tài khoản user.
+      operationId: adminBanUser
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{id}/activate:
+    post:
+      tags:
+        - Admin
+      summary: Kích hoạt user (Admin only)
+      description: |
+        Kích hoạt lại tài khoản user.
+      operationId: adminActivateUser
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/users/{id}/role:
+    patch:
+      tags:
+        - Admin
+      summary: Thay đổi role user (Admin only)
+      description: |
+        Thay đổi vai trò của user.
+      operationId: adminChangeUserRole
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  type: string
+                  enum: [Learner, Expert, Admin]
+      responses:
+        '200':
+          description: Thay đổi thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /admin/stats:
+    get:
+      tags:
+        - Admin
+      summary: Lấy thống kê hệ thống (Admin only)
+      description: |
+        Lấy thống kê tổng quan của hệ thống.
+      operationId: adminGetStats
+      responses:
+        '200':
+          description: Thống kê hệ thống
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUsers:
+                    type: integer
+                  totalSubjects:
+                    type: integer
+                  totalQuestionSets:
+                    type: integer
+                  totalQuizAttempts:
+                    type: integer
+                  activeSubscriptions:
+                    type: integer
+
+  /admin/revenue:
+    get:
+      tags:
+        - Admin
+      summary: Lấy báo cáo doanh thu (Admin only)
+      operationId: adminGetRevenue
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Báo cáo doanh thu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRevenue:
+                    type: number
+                  subscriptionRevenue:
+                    type: number
+                  breakdown:
+                    type: array
+                    items:
+                      type: object
+
+  /admin/experts/performance:
+    get:
+      tags:
+        - Admin
+      summary: Lấy hiệu suất Expert (Admin only)
+      operationId: adminGetExpertPerformance
+      responses:
+        '200':
+          description: Hiệu suất Expert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  experts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        expertId:
+                          type: string
+                        fullName:
+                          type: string
+                        validatedQuestionSets:
+                          type: integer
+                        totalCommission:
+                          type: number
+                        averageRating:
+                          type: number
+
+  # ============= MODERATION ENDPOINTS =============
+  
+  /moderation/flag:
+    post:
+      tags:
+        - Moderation
+      summary: Báo cáo nội dung
+      description: |
+        Báo cáo nội dung vi phạm (bộ câu hỏi, câu hỏi cụ thể, v.v.).
+      operationId: flagContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contentType
+                - contentId
+                - reason
+              properties:
+                contentType:
+                  type: string
+                  enum: [QuestionSet, Question, User]
+                contentId:
+                  type: string
+                reason:
+                  type: string
+                  enum: [Spam, Offensive, Copyright, Other]
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Báo cáo đã được ghi nhận
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flagId:
+                    type: string
+                  message:
+                    type: string
+
+  /moderation/flags:
+    get:
+      tags:
+        - Moderation
+      summary: Lấy danh sách báo cáo (Admin only)
+      operationId: listFlags
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Reviewed, Dismissed]
+      responses:
+        '200':
+          description: Danh sách báo cáo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /moderation/flags/{id}/review:
+    patch:
+      tags:
+        - Moderation
+      summary: Xem xét báo cáo (Admin only)
+      operationId: reviewFlag
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [RemoveContent, WarnUser, BanUser, NoAction]
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /moderation/flags/{id}/dismiss:
+    patch:
+      tags:
+        - Moderation
+      summary: Bỏ qua báo cáo (Admin only)
+      operationId: dismissFlag
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ============= SEARCH ENDPOINTS =============
+  
+  /search:
+    get:
+      tags:
+        - Search
+      summary: Tìm kiếm toàn cục
+      description: |
+        Tìm kiếm trong subjects, documents, question sets.
+      operationId: globalSearch
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Từ khóa tìm kiếm
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Loại nội dung
+          schema:
+            type: string
+            enum: [subjects, documents, questionSets, all]
+            default: all
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: Kết quả tìm kiếm
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  /search/question-sets:
+    get:
+      tags:
+        - Search
+      summary: Lọc bộ câu hỏi nâng cao
+      description: |
+        Tìm kiếm và lọc bộ câu hỏi với nhiều tiêu chí.
+      operationId: filterQuestionSets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum: ["Biết", "Hiểu", "Vận dụng", "Vận dụng cao"]
+        - name: isShared
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: Kết quả tìm kiếm
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionSet'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+  # ============= EXPORT/IMPORT ENDPOINTS =============
+  
+  /export/question-sets/{id}/json:
+    get:
+      tags:
+        - Export/Import
+      summary: Xuất JSON
+      description: |
+        Xuất bộ câu hỏi ra định dạng JSON.
+        
+        **Giới hạn:** Theo subscription plan
+      operationId: exportQuestionSetJSON
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: File JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSet'
+
+  /export/question-sets/{id}/csv:
+    get:
+      tags:
+        - Export/Import
+      summary: Xuất CSV
+      operationId: exportQuestionSetCSV
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: File CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /export/question-sets/{id}/pdf:
+    get:
+      tags:
+        - Export/Import
+      summary: Xuất PDF
+      operationId: exportQuestionSetPDF
+      parameters:
+        - $ref: '#/components/parameters/idParam'
+      responses:
+        '200':
+          description: File PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /export/question-sets/batch:
+    post:
+      tags:
+        - Export/Import
+      summary: Xuất nhiều bộ câu hỏi
+      operationId: batchExportQuestionSets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionSetIds:
+                  type: array
+                  items:
+                    type: string
+                format:
+                  type: string
+                  enum: [json, csv, pdf]
+      responses:
+        '200':
+          description: File ZIP chứa các export
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
+  /import/question-sets/json:
+    post:
+      tags:
+        - Export/Import
+      summary: Nhập từ JSON
+      operationId: importQuestionSetJSON
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                subjectId:
+                  type: string
+      responses:
+        '201':
+          description: Import thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionSet'
+
+  /import/question-sets/csv:
+    post:
+      tags:
+        - Export/Import
+      summary: Nhập từ CSV
+      operationId: importQuestionSetCSV
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                subjectId:
+                  type: string
+      responses:
+        '201':
+          description: Import thành công
+
+  /import/question-sets/batch:
+    post:
+      tags:
+        - Export/Import
+      summary: Nhập nhiều bộ câu hỏi
+      operationId: batchImportQuestionSets
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File ZIP chứa nhiều file
+      responses:
+        '200':
+          description: Import thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  failed:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+
+  # ============= BATCH OPERATIONS ENDPOINTS =============
+  
+  /batch/question-sets/delete:
+    post:
+      tags:
+        - Batch Operations
+      summary: Xóa nhiều bộ câu hỏi (Expert/Admin only)
+      operationId: batchDeleteQuestionSets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Xóa thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+
+  /batch/question-sets/publish:
+    post:
+      tags:
+        - Batch Operations
+      summary: Publish nhiều bộ câu hỏi (Expert/Admin only)
+      operationId: batchPublishQuestionSets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Publish thành công
+
+  /batch/question-sets/unpublish:
+    post:
+      tags:
+        - Batch Operations
+      summary: Unpublish nhiều bộ câu hỏi (Expert/Admin only)
+      operationId: batchUnpublishQuestionSets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Unpublish thành công
+
+  /batch/question-sets/update:
+    patch:
+      tags:
+        - Batch Operations
+      summary: Cập nhật nhiều bộ câu hỏi (Expert/Admin only)
+      operationId: batchUpdateQuestionSets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+                - updates
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                updates:
+                  type: object
+      responses:
+        '200':
+          description: Cập nhật thành công
+
+  /batch/documents/delete:
+    post:
+      tags:
+        - Batch Operations
+      summary: Xóa nhiều tài liệu
+      operationId: batchDeleteDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ids
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Xóa thành công
+
+  # ============= WEBHOOKS ENDPOINTS =============
+  
+  /webhooks/sepay:
+    post:
+      tags:
+        - Webhooks
+      summary: Sepay webhook
+      description: |
+        Webhook nhận thông báo từ Sepay khi có giao dịch.
+        
+        **Bảo mật:** Verify signature từ Sepay
+        
+        **Quy trình:**
+        1. Nhận webhook từ Sepay
+        2. Verify signature
+        3. Parse description để lấy user ID
+        4. Tạo subscription cho user
+        5. Gửi notification
+      operationId: sepayWebhook
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook đã được xử lý
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # ============= HEALTH CHECK ENDPOINTS =============
+  
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check cơ bản (Legacy)
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /healthz:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: |
+        Endpoint kiểm tra cơ bản - service có đang chạy không.
+      operationId: healthz
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+  /readyz:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: |
+        Kubernetes readiness probe - kiểm tra service sẵn sàng nhận traffic.
+      operationId: readyz
+      security: []
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Not ready
+
+  /livez:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: |
+        Kubernetes liveness probe - kiểm tra service còn sống.
+      operationId: livez
+      security: []
+      responses:
+        '200':
+          description: Alive
+        '503':
+          description: Not alive
+
+  /health/deep:
+    get:
+      tags:
+        - Health
+      summary: Deep health check
+      description: |
+        Kiểm tra sức khỏe toàn diện bao gồm:
+        - MongoDB connection
+        - Redis connection
+        - External services (LLM, Storage, Email)
+      operationId: deepHealthCheck
+      security: []
+      responses:
+        '200':
+          description: All systems operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  checks:
+                    type: object
+                    properties:
+                      mongodb:
+                        type: string
+                        example: "ok"
+                      redis:
+                        type: string
+                        example: "ok"
+                      llm:
+                        type: string
+                        example: "ok"
+        '503':
+          description: Some systems unavailable
+
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics
+      description: |
+        Endpoint cho Prometheus metrics.
+      operationId: metrics
+      security: []
+      responses:
+        '200':
+          description: Metrics
+          content:
+            text/plain:
+              schema:
+                type: string

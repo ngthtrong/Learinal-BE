@@ -1,0 +1,670 @@
+# OpenAPI Paths - Authentication & Users Endpoints
+# File này chứa chi tiết các endpoints cho Auth và Users
+
+paths:
+  # ============= AUTHENTICATION ENDPOINTS =============
+  
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Đăng ký tài khoản mới
+      description: |
+        Đăng ký tài khoản mới với email và mật khẩu.
+        
+        **Quy trình:**
+        1. Hệ thống tạo tài khoản với status `PendingActivation`
+        2. Gửi email xác thực đến địa chỉ email đã đăng ký
+        3. Người dùng cần xác thực email để kích hoạt tài khoản
+        
+        **Rate Limit:** 5 requests/15 minutes
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fullName
+                - email
+                - password
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+                  example: "Nguyễn Văn A"
+                email:
+                  type: string
+                  format: email
+                  example: "nguyenvana@example.com"
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  format: password
+                  example: "SecurePass123!"
+      responses:
+        '201':
+          description: Đăng ký thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Registration successful. Please check your email to verify your account."
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "Conflict"
+                message: "Email already registered"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Đăng nhập
+      description: |
+        Đăng nhập với email và mật khẩu.
+        
+        **Trả về:**
+        - `accessToken`: JWT token để xác thực các API requests
+        - `refreshToken`: Token để làm mới accessToken
+        - `expiresIn`: Thời gian hết hạn (giây)
+        
+        **Rate Limit:** 5 requests/15 minutes
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "nguyenvana@example.com"
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  format: password
+                  example: "SecurePass123!"
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  refreshToken:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  expiresIn:
+                    type: integer
+                    description: Thời gian hết hạn accessToken (giây)
+                    example: 3600
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Thông tin đăng nhập không chính xác
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "Unauthorized"
+                message: "Invalid email or password"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/state:
+    get:
+      tags:
+        - Auth
+      summary: Tạo OAuth state token
+      description: |
+        Tạo OAuth state token và set cookie để bảo vệ CSRF.
+        
+        **Sử dụng:** Gọi endpoint này trước khi redirect đến OAuth provider (Google)
+      operationId: getOAuthState
+      security: []
+      parameters:
+        - name: manual
+          in: query
+          description: Set "1" hoặc "true" nếu đây là manual OAuth flow
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false"]
+      responses:
+        '200':
+          description: State token đã được tạo
+          headers:
+            Set-Cookie:
+              description: Cookie chứa OAuth state
+              schema:
+                type: string
+                example: oauth_state=abc123; HttpOnly; Secure; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    example: "abc123-xyz789"
+                  ttlMs:
+                    type: integer
+                    description: Thời gian tồn tại (milliseconds)
+                    example: 300000
+
+  /auth/exchange:
+    post:
+      tags:
+        - Auth
+      summary: Đổi OAuth code lấy JWT
+      description: |
+        Exchange OAuth authorization code từ Google để lấy JWT token.
+        
+        **Quy trình:**
+        1. User được redirect về từ Google với `code` trong query params
+        2. Frontend gọi endpoint này với `code`
+        3. Backend xác thực `code` với Google và trả về JWT
+      operationId: exchangeOAuthCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: Authorization code từ Google
+                  example: "4/0AX4XfWh..."
+      responses:
+        '200':
+          description: Exchange thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Làm mới access token
+      description: |
+        Sử dụng refresh token để lấy access token mới.
+        
+        **Khi nào sử dụng:**
+        - Khi access token hết hạn (401 Unauthorized)
+        - Trước khi access token hết hạn để duy trì phiên
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Token mới đã được tạo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Đăng xuất
+      description: |
+        Đăng xuất và thu hồi refresh token hiện tại.
+      operationId: logout
+      responses:
+        '200':
+          description: Đăng xuất thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged out successfully"
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Auth
+      summary: Quên mật khẩu
+      description: |
+        Gửi email reset mật khẩu đến địa chỉ email đã đăng ký.
+        
+        **Rate Limit:** 3 requests/hour
+      operationId: forgotPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "nguyenvana@example.com"
+      responses:
+        '200':
+          description: Email đã được gửi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Password reset email sent"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Auth
+      summary: Reset mật khẩu
+      description: |
+        Đặt lại mật khẩu mới với token từ email.
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                  description: Token từ email reset password
+                  example: "abc123xyz789"
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  format: password
+                  example: "NewSecurePass123!"
+      responses:
+        '200':
+          description: Mật khẩu đã được reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Password reset successful"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/verify-email:
+    get:
+      tags:
+        - Auth
+      summary: Xác thực email (GET)
+      description: |
+        Endpoint cho link trong email xác thực (click vào link).
+      operationId: verifyEmailGet
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "abc123xyz789"
+      responses:
+        '200':
+          description: Email đã được xác thực
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          
+    post:
+      tags:
+        - Auth
+      summary: Xác thực email (POST)
+      description: |
+        Endpoint để xác thực email qua API.
+      operationId: verifyEmailPost
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  example: "abc123xyz789"
+      responses:
+        '200':
+          description: Email đã được xác thực
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+
+  /auth/resend-verification:
+    post:
+      tags:
+        - Auth
+      summary: Gửi lại email xác thực
+      description: |
+        Gửi lại email xác thực cho tài khoản chưa kích hoạt.
+        
+        **Rate Limit:** 3 requests/hour
+      operationId: resendVerification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "nguyenvana@example.com"
+      responses:
+        '200':
+          description: Email đã được gửi lại
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Verification email sent"
+
+  /auth/sessions:
+    get:
+      tags:
+        - Auth
+      summary: Lấy danh sách phiên đăng nhập
+      description: |
+        Lấy tất cả phiên đăng nhập đang hoạt động của user.
+      operationId: getSessions
+      responses:
+        '200':
+          description: Danh sách phiên đăng nhập
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        device:
+                          type: string
+                        ipAddress:
+                          type: string
+                        lastActive:
+                          type: string
+                          format: date-time
+                        isCurrent:
+                          type: boolean
+
+  /auth/sessions/{id}/revoke:
+    post:
+      tags:
+        - Auth
+      summary: Thu hồi phiên đăng nhập
+      description: |
+        Thu hồi một phiên đăng nhập cụ thể.
+      operationId: revokeSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Phiên đã được thu hồi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+
+  /auth/config:
+    get:
+      tags:
+        - Auth
+      summary: Lấy cấu hình OAuth
+      description: |
+        Lấy thông tin cấu hình OAuth public (không bao gồm secret).
+        
+        **Sử dụng:** Frontend dùng để cấu hình OAuth flow với Google.
+      operationId: getOAuthConfig
+      security: []
+      responses:
+        '200':
+          description: Cấu hình OAuth
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientId:
+                    type: string
+                    example: "123456789-abc.apps.googleusercontent.com"
+                  redirectUri:
+                    type: string
+                    example: "https://learinal.com/auth/callback"
+                  provider:
+                    type: string
+                    example: "google"
+                  authEndpoint:
+                    type: string
+                    example: "https://accounts.google.com/o/oauth2/v2/auth"
+                  scope:
+                    type: string
+                    example: "openid email profile"
+                  responseType:
+                    type: string
+                    example: "code"
+                  pkceRequired:
+                    type: boolean
+                    example: false
+
+  # ============= USER ENDPOINTS =============
+  
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Lấy thông tin user hiện tại
+      description: |
+        Lấy thông tin profile của user đang đăng nhập.
+        
+        **Cache:** 10 phút
+        **Rate Limit:** 60 requests/minute
+      operationId: getMyProfile
+      parameters:
+        - $ref: '#/components/parameters/ifNoneMatchParam'
+      responses:
+        '200':
+          description: Thông tin user
+          headers:
+            ETag:
+              description: Entity tag cho caching
+              schema:
+                type: string
+            Cache-Control:
+              description: Cache control header
+              schema:
+                type: string
+                example: "public, max-age=600"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '304':
+          description: Not Modified (cache còn hợp lệ)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+    patch:
+      tags:
+        - Users
+      summary: Cập nhật thông tin user
+      description: |
+        Cập nhật thông tin profile của user hiện tại.
+        
+        **Lưu ý:** Cần gửi header `If-Match` với ETag từ GET request trước đó để tránh xung đột.
+      operationId: updateMyProfile
+      parameters:
+        - name: If-Match
+          in: header
+          description: ETag của version hiện tại
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Xung đột version (ETag không khớp)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "Conflict"
+                message: "Resource has been modified"
+        '412':
+          description: Precondition Failed (thiếu If-Match header)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

@@ -5,5 +5,6 @@ const llm = require('./llm');
 const email = require('./email');
 const storage = require('./storage');
 const stripe = require('./stripe');
+const sepay = require('./sepay');
 
-module.exports = { env, mongoose: mongooseCfg, oauth, llm, email, storage, stripe };
+module.exports = { env, mongoose: mongooseCfg, oauth, llm, email, storage, stripe, sepay };

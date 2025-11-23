@@ -1,0 +1,962 @@
+openapi: 3.1.0
+info:
+  title: Learinal API - Complete Documentation
+  version: 1.0.0
+  description: |
+    ## Learinal - Hệ thống Học tập Thông minh
+    
+    API RESTful đầy đủ cho nền tảng Learinal, bao gồm:
+    - **Xác thực & Phân quyền**: OAuth 2.0 (Google), JWT, Local Auth
+    - **Quản lý Môn học**: Subjects, Documents, Question Sets
+    - **Bài thi & Đánh giá**: Quiz Attempts, Validation Workflow
+    - **Hệ thống Thanh toán**: Subscriptions, Payments (Sepay)
+    - **Quản trị**: Admin, Moderation, Analytics
+    - **Tính năng nâng cao**: Search, Export/Import, Batch Operations
+    
+    ### Kiến trúc Bảo mật
+    - OAuth 2.0 với Google
+    - JWT Bearer Authentication
+    - Role-based Access Control (RBAC): Learner, Expert, Admin
+    - Rate Limiting & CSRF Protection
+    
+    ### Phân quyền (Roles)
+    - **Learner**: Người học - Tạo môn học, tải tài liệu, sinh câu hỏi, làm bài thi
+    - **Expert**: Chuyên gia - Xác thực câu hỏi, nhận hoa hồng
+    - **Admin**: Quản trị viên - Toàn quyền quản lý hệ thống
+    
+  contact:
+    name: Learinal Development Team
+    email: dev@learinal.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://api.learinal.com/api/v1
+    description: Production Server
+  - url: https://staging-api.learinal.com/api/v1
+    description: Staging Server
+  - url: http://localhost:8080/api/v1
+    description: Local Development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Xác thực và quản lý phiên đăng nhập
+  - name: Users
+    description: Quản lý thông tin người dùng
+  - name: Subjects
+    description: Quản lý môn học
+  - name: Documents
+    description: Quản lý tài liệu học tập
+  - name: Question Sets
+    description: Quản lý bộ câu hỏi
+  - name: Quiz Attempts
+    description: Quản lý lượt làm bài thi
+  - name: Validation Requests
+    description: Quy trình xác thực câu hỏi
+  - name: Notifications
+    description: Hệ thống thông báo
+  - name: Subscriptions
+    description: Quản lý gói đăng ký
+  - name: Payments
+    description: Thanh toán và giao dịch
+  - name: Commission Records
+    description: Quản lý hoa hồng Expert
+  - name: Admin
+    description: Quản trị hệ thống
+  - name: Moderation
+    description: Kiểm duyệt nội dung
+  - name: Search
+    description: Tìm kiếm và lọc
+  - name: Export/Import
+    description: Xuất/nhập dữ liệu
+  - name: Batch Operations
+    description: Xử lý hàng loạt
+  - name: Webhooks
+    description: Webhook từ bên thứ ba
+  - name: Health
+    description: Kiểm tra sức khỏe hệ thống
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token nhận được từ endpoint `/auth/login`, `/auth/exchange`, hoặc `/auth/register`.
+        
+        Thêm vào header: `Authorization: Bearer <token>`
+
+  parameters:
+    # Pagination Parameters
+    pageParam:
+      name: page
+      in: query
+      description: Số trang (bắt đầu từ 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+      
+    pageSizeParam:
+      name: pageSize
+      in: query
+      description: Số lượng items trên mỗi trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+      
+    sortParam:
+      name: sort
+      in: query
+      description: Trường sắp xếp (thêm `-` phía trước để sắp xếp giảm dần)
+      schema:
+        type: string
+      examples:
+        newest:
+          value: "-createdAt"
+          summary: Mới nhất
+        oldest:
+          value: "createdAt"
+          summary: Cũ nhất
+        alphabetical:
+          value: "title"
+          summary: Theo alphabet
+          
+    # Cache Parameters
+    ifNoneMatchParam:
+      name: If-None-Match
+      in: header
+      description: ETag để kiểm tra cache (trả về 304 nếu không thay đổi)
+      schema:
+        type: string
+      example: '"abc123-456"'
+      
+    # Idempotency
+    idempotencyKeyParam:
+      name: Idempotency-Key
+      in: header
+      description: Key để đảm bảo request không bị xử lý trùng lặp
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+      
+    # Path Parameters
+    idParam:
+      name: id
+      in: path
+      required: true
+      description: MongoDB ObjectId
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{24}$'
+      example: "507f1f77bcf86cd799439011"
+
+  responses:
+    # Success Responses
+    Success:
+      description: Thành công
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: true
+              message:
+                type: string
+                example: "Operation completed successfully"
+                
+    # Error Responses
+    BadRequest:
+      description: Yêu cầu không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "ValidationError"
+            message: "Invalid input data"
+            details:
+              field: "email"
+              issue: "Email format is invalid"
+              
+    Unauthorized:
+      description: Chưa xác thực hoặc token không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "Unauthorized"
+            message: "Authentication required"
+            
+    Forbidden:
+      description: Không có quyền truy cập
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "Forbidden"
+            message: "Insufficient permissions"
+            
+    NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "NotFound"
+            message: "Resource not found"
+            
+    Conflict:
+      description: Xung đột dữ liệu
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "Conflict"
+            message: "Resource already exists"
+            
+    TooManyRequests:
+      description: Quá nhiều yêu cầu
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "TooManyRequests"
+            message: "Rate limit exceeded"
+            
+    InternalServerError:
+      description: Lỗi server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "InternalServerError"
+            message: "An unexpected error occurred"
+
+  schemas:
+    # Common Schemas
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Mã lỗi
+          example: "ValidationError"
+        message:
+          type: string
+          description: Thông báo lỗi
+          example: "Invalid input data"
+        details:
+          type: object
+          additionalProperties: true
+          description: Chi tiết lỗi bổ sung
+          
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+      properties:
+        page:
+          type: integer
+          description: Trang hiện tại
+          example: 1
+        pageSize:
+          type: integer
+          description: Số items trên trang
+          example: 20
+        total:
+          type: integer
+          description: Tổng số items
+          example: 150
+        totalPages:
+          type: integer
+          description: Tổng số trang
+          example: 8
+          
+    # User Schemas
+    User:
+      type: object
+      required:
+        - id
+        - fullName
+        - email
+        - role
+        - status
+        - subscriptionStatus
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: User ID
+          example: "507f1f77bcf86cd799439011"
+        fullName:
+          type: string
+          description: Họ và tên
+          example: "Nguyễn Văn A"
+        email:
+          type: string
+          format: email
+          description: Email
+          example: "nguyenvana@example.com"
+        role:
+          type: string
+          enum: [Learner, Expert, Admin]
+          description: Vai trò
+          example: "Learner"
+        status:
+          type: string
+          enum: [PendingActivation, Active, Deactivated]
+          description: Trạng thái tài khoản
+          example: "Active"
+        subscriptionPlanId:
+          type: string
+          nullable: true
+          description: ID gói đăng ký hiện tại
+          example: "507f1f77bcf86cd799439012"
+        subscriptionStatus:
+          type: string
+          enum: [None, Active, Expired, Cancelled]
+          description: Trạng thái đăng ký
+          example: "Active"
+        subscriptionRenewalDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Ngày gia hạn tiếp theo
+          example: "2025-12-01T00:00:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: Ngày tạo
+          example: "2025-01-01T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Ngày cập nhật
+          example: "2025-01-15T14:30:00Z"
+          
+    UserUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 160
+          example: "Nguyễn Văn B"
+        email:
+          type: string
+          format: email
+          example: "nguyenvanb@example.com"
+          
+    # Subject Schemas
+    Subject:
+      type: object
+      required:
+        - id
+        - userId
+        - subjectName
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Subject ID
+          example: "507f1f77bcf86cd799439013"
+        userId:
+          type: string
+          description: ID người tạo
+          example: "507f1f77bcf86cd799439011"
+        subjectName:
+          type: string
+          description: Tên môn học
+          example: "Cấu trúc dữ liệu và Giải thuật"
+        description:
+          type: string
+          description: Mô tả môn học
+          example: "Môn học về cấu trúc dữ liệu cơ bản"
+        tableOfContents:
+          type: array
+          description: Mục lục môn học
+          items:
+            $ref: '#/components/schemas/TableOfContentsItem'
+        summary:
+          type: string
+          description: Tóm tắt môn học
+          example: "Môn học bao gồm các chủ đề: Stack, Queue, Tree, Graph..."
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          
+    SubjectCreate:
+      type: object
+      required:
+        - subjectName
+      properties:
+        subjectName:
+          type: string
+          minLength: 1
+          example: "Cơ sở dữ liệu"
+        description:
+          type: string
+          example: "Môn học về hệ quản trị CSDL"
+        tableOfContents:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableOfContentsItem'
+        summary:
+          type: string
+          
+    TableOfContentsItem:
+      type: object
+      properties:
+        topicId:
+          type: string
+          example: "topic-uuid-1"
+        topicName:
+          type: string
+          example: "Chương 1: Giới thiệu"
+        childTopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableOfContentsItem'
+            
+    # Document Schemas
+    Document:
+      type: object
+      required:
+        - id
+        - subjectId
+        - ownerId
+        - originalFileName
+        - fileType
+        - fileSize
+        - status
+        - uploadedAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd799439014"
+        subjectId:
+          type: string
+          example: "507f1f77bcf86cd799439013"
+        ownerId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        originalFileName:
+          type: string
+          example: "chuong1.pdf"
+        fileType:
+          type: string
+          enum: [.pdf, .docx, .txt]
+          example: ".pdf"
+        fileSize:
+          type: number
+          description: Kích thước file (MB)
+          example: 4.8
+        storagePath:
+          type: string
+          description: Đường dẫn lưu trữ
+          example: "s3://bucket/documents/chuong1.pdf"
+        extractedText:
+          type: string
+          description: Văn bản trích xuất từ file
+        summaryShort:
+          type: string
+          description: Tóm tắt ngắn (3-5 câu)
+        summaryFull:
+          type: string
+          description: Tóm tắt đầy đủ
+        summaryUpdatedAt:
+          type: string
+          format: date-time
+        tableOfContents:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableOfContentsItem'
+        status:
+          type: string
+          enum: [Uploading, Processing, Completed, Error]
+          example: "Completed"
+        uploadedAt:
+          type: string
+          format: date-time
+          
+    # Question Set Schemas
+    QuestionSet:
+      type: object
+      required:
+        - id
+        - userId
+        - subjectId
+        - title
+        - status
+        - isShared
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd799439015"
+        userId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        subjectId:
+          type: string
+          example: "507f1f77bcf86cd799439013"
+        title:
+          type: string
+          example: "Đề thi giữa kỳ - Chương 1-2"
+        status:
+          type: string
+          enum: [Pending, Processing, Draft, Public, PendingValidation, InReview, Validated, Rejected, PendingApproval, Published, Error]
+          example: "Public"
+        isShared:
+          type: boolean
+          description: Có được chia sẻ công khai không
+          example: true
+        sharedUrl:
+          type: string
+          nullable: true
+          example: "https://learinal.com/share/abc123"
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          
+    Question:
+      type: object
+      required:
+        - questionId
+        - questionText
+        - options
+        - correctAnswerIndex
+      properties:
+        questionId:
+          type: string
+          example: "uuid-q1"
+        questionText:
+          type: string
+          example: "Stack là cấu trúc dữ liệu gì?"
+        options:
+          type: array
+          items:
+            type: string
+          example: ["FIFO", "LIFO", "Random Access", "Sequential"]
+        correctAnswerIndex:
+          type: integer
+          minimum: 0
+          example: 1
+        explanation:
+          type: string
+          example: "Stack hoạt động theo nguyên lý LIFO (Last In First Out)"
+        topicTags:
+          type: array
+          items:
+            type: string
+          example: ["Chương 1", "Stack"]
+        topicId:
+          type: string
+          example: "topic-uuid-1"
+        topicStatus:
+          type: string
+          example: "active"
+        difficultyLevel:
+          type: string
+          enum: ["Biết", "Hiểu", "Vận dụng", "Vận dụng cao"]
+          example: "Hiểu"
+          
+    QuestionSetGenerate:
+      type: object
+      required:
+        - subjectId
+        - title
+      properties:
+        subjectId:
+          type: string
+          example: "507f1f77bcf86cd799439013"
+        title:
+          type: string
+          minLength: 1
+          example: "Đề thi cuối kỳ"
+        numQuestions:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+          example: 20
+        difficulty:
+          type: string
+          enum: ["Biết", "Hiểu", "Vận dụng", "Vận dụng cao"]
+          default: "Hiểu"
+          example: "Vận dụng"
+          
+    # Quiz Attempt Schemas
+    QuizAttempt:
+      type: object
+      required:
+        - id
+        - userId
+        - questionSetId
+        - isCompleted
+        - startedAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd799439016"
+        userId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        questionSetId:
+          type: string
+          example: "507f1f77bcf86cd799439015"
+        isCompleted:
+          type: boolean
+          example: false
+        score:
+          type: number
+          nullable: true
+          example: 85.5
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Answer'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          
+    Answer:
+      type: object
+      required:
+        - questionId
+        - selectedOptionIndex
+      properties:
+        questionId:
+          type: string
+          example: "uuid-q1"
+        selectedOptionIndex:
+          type: integer
+          minimum: 0
+          example: 1
+        isCorrect:
+          type: boolean
+          example: true
+          
+    QuizAttemptCreate:
+      type: object
+      required:
+        - setId
+      properties:
+        setId:
+          type: string
+          description: ID của question set
+          example: "507f1f77bcf86cd799439015"
+          
+    QuizAttemptSubmit:
+      type: object
+      required:
+        - answers
+      properties:
+        answers:
+          type: array
+          items:
+            type: object
+            required:
+              - questionId
+              - selectedOptionIndex
+            properties:
+              questionId:
+                type: string
+              selectedOptionIndex:
+                type: integer
+                minimum: 0
+                
+    # Validation Request Schemas
+    ValidationRequest:
+      type: object
+      required:
+        - id
+        - questionSetId
+        - requesterId
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd799439017"
+        questionSetId:
+          type: string
+          example: "507f1f77bcf86cd799439015"
+        requesterId:
+          type: string
+          description: ID người yêu cầu (Learner)
+          example: "507f1f77bcf86cd799439011"
+        expertId:
+          type: string
+          nullable: true
+          description: ID Expert được gán
+          example: "507f1f77bcf86cd799439018"
+        status:
+          type: string
+          enum: [Pending, Assigned, InProgress, Completed, Rejected]
+          example: "Pending"
+        decision:
+          type: string
+          enum: [Approved, Rejected]
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        correctedQuestions:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Question'
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          
+    # Notification Schemas
+    Notification:
+      type: object
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - message
+        - isRead
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd799439019"
+        userId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        type:
+          type: string
+          enum: [System, QuestionSetReady, ValidationAssigned, ValidationComplete, SubscriptionExpiring, PaymentReceived]
+          example: "QuestionSetReady"
+        title:
+          type: string
+          example: "Bộ câu hỏi đã sẵn sàng"
+        message:
+          type: string
+          example: "Bộ câu hỏi 'Đề thi giữa kỳ' đã được tạo thành công"
+        isRead:
+          type: boolean
+          example: false
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+          
+    # Subscription Plan Schemas
+    SubscriptionPlan:
+      type: object
+      required:
+        - id
+        - name
+        - tier
+        - price
+        - billingCycle
+        - entitlements
+        - isActive
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd79943901a"
+        name:
+          type: string
+          example: "Premium Monthly"
+        tier:
+          type: string
+          enum: [Free, Premium, Enterprise]
+          example: "Premium"
+        price:
+          type: number
+          description: Giá (VND)
+          example: 99000
+        billingCycle:
+          type: string
+          enum: [Monthly, Yearly]
+          example: "Monthly"
+        entitlements:
+          type: object
+          properties:
+            maxQuestionSetsPerMonth:
+              type: integer
+              example: 50
+            maxQuestionsPerSet:
+              type: integer
+              example: 100
+            maxDocumentsPerSubject:
+              type: integer
+              example: 20
+            canRequestValidation:
+              type: boolean
+              example: true
+            maxValidationRequestsPerMonth:
+              type: integer
+              example: 10
+            canExport:
+              type: boolean
+              example: true
+            maxExportsPerDay:
+              type: integer
+              example: 5
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          
+    # User Subscription Schemas
+    UserSubscription:
+      type: object
+      required:
+        - id
+        - userId
+        - planId
+        - status
+        - startDate
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd79943901b"
+        userId:
+          type: string
+          example: "507f1f77bcf86cd799439011"
+        planId:
+          type: string
+          example: "507f1f77bcf86cd79943901a"
+        status:
+          type: string
+          enum: [Active, Expired, Cancelled]
+          example: "Active"
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        autoRenew:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          
+    # Commission Record Schemas
+    CommissionRecord:
+      type: object
+      required:
+        - id
+        - expertId
+        - questionSetId
+        - quizAttemptId
+        - amount
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: "507f1f77bcf86cd79943901c"
+        expertId:
+          type: string
+          example: "507f1f77bcf86cd799439018"
+        questionSetId:
+          type: string
+          example: "507f1f77bcf86cd799439015"
+        quizAttemptId:
+          type: string
+          example: "507f1f77bcf86cd799439016"
+        amount:
+          type: number
+          description: Số tiền hoa hồng (VND)
+          example: 5000
+        status:
+          type: string
+          enum: [Pending, Paid, Cancelled]
+          example: "Pending"
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          
+    # Payment Schemas
+    SepayQRResponse:
+      type: object
+      properties:
+        qrCode:
+          type: string
+          description: Base64 QR code image
+        qrDataURL:
+          type: string
+          description: URL để hiển thị QR
+        accountNo:
+          type: string
+          example: "0123456789"
+        accountName:
+          type: string
+          example: "NGUYEN VAN A"
+        amount:
+          type: number
+          example: 99000
+        description:
+          type: string
+          example: "LEARINAL PAYMENT USER123"
+        bank:
+          type: string
+          example: "MB Bank"
+
+# Đây là phần 1 - Components và Schemas cơ bản
+# File sẽ được tiếp tục với các paths trong phần tiếp theo
