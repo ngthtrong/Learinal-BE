@@ -6,6 +6,10 @@ const ValidationRequestSchema = new Schema({
   adminId: { type: Types.ObjectId, ref: 'User' },
   expertId: { type: Types.ObjectId, ref: 'User' },
   status: { type: String, enum: ['PendingAssignment','Assigned','Completed'], required: true },
+  // Decision outcome when status === Completed
+  decision: { type: String, enum: ['Approved','Rejected'] },
+  // Optional feedback from expert
+  feedback: { type: String },
   requestTime: { type: Date, required: true },
   completionTime: { type: Date },
 }, { timestamps: true, versionKey: false, collection: 'validationRequests' });
