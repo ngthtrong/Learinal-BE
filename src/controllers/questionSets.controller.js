@@ -107,12 +107,10 @@ module.exports = {
           0
         );
         if (totalQuestions < 1 || totalQuestions > 100) {
-          return res
-            .status(400)
-            .json({
-              code: "ValidationError",
-              message: "Total questions from difficultyDistribution must be between 1 and 100",
-            });
+          return res.status(400).json({
+            code: "ValidationError",
+            message: "Total questions from difficultyDistribution must be between 1 and 100",
+          });
         }
       } else {
         if (numQuestions < 1 || numQuestions > 100) {
@@ -236,10 +234,35 @@ module.exports = {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       const updated = await repo.updateById(
         req.params.id,
-        { $set: { isShared: false, sharedUrl: null } },
+        { $set: { isShared: false }, $unset: { sharedUrl: "" } },
         { new: true }
       );
       res.status(200).json(mapId(updated));
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // DELETE /question-sets/:id
+  remove: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const existing = await repo.findById(req.params.id);
+      if (!existing || String(existing.userId) !== String(user.id))
+        return res.status(404).json({ code: "NotFound", message: "Not found" });
+
+      // Delete all quiz attempts for this question set
+      const QuizAttemptsRepository = require("../repositories/quizAttempts.repository");
+      const quizAttemptsRepo = new QuizAttemptsRepository();
+      await quizAttemptsRepo.deleteMany({ setId: req.params.id });
+
+      // Delete the question set
+      await repo.deleteById(req.params.id);
+
+      res.status(200).json({
+        success: true,
+        message: "Question set and all associated quiz attempts deleted successfully",
+      });
     } catch (e) {
       next(e);
     }

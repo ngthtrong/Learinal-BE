@@ -1,6 +1,7 @@
 const QuestionSet = require("../models/questionSet.model");
 const Document = require("../models/document.model");
 const Subject = require("../models/subject.model");
+const User = require("../models/user.model");
 
 class SearchService {
   /**
@@ -49,7 +50,8 @@ class SearchService {
 
     const sets = await QuestionSet.find(searchQuery)
       .limit(limit)
-      .select("title description status difficulty creatorId createdAt")
+      .select("title description status difficulty userId createdAt")
+      .populate("userId", "fullName")
       .lean();
 
     return sets.map((set) => ({
@@ -59,6 +61,7 @@ class SearchService {
       description: set.description,
       status: set.status,
       difficulty: set.difficulty,
+      creatorName: set.userId?.fullName || "Ẩn danh",
       createdAt: set.createdAt,
     }));
   }
@@ -165,7 +168,13 @@ class SearchService {
     }
 
     const [results, total] = await Promise.all([
-      QuestionSet.find(query).skip(skip).limit(pageSize).sort({ createdAt: -1 }).lean(),
+      QuestionSet.find(query)
+        .skip(skip)
+        .limit(pageSize)
+        .sort({ createdAt: -1 })
+        .populate("userId", "fullName")
+        .populate("subjectId", "subjectName")
+        .lean(),
       QuestionSet.countDocuments(query),
     ]);
 
@@ -177,6 +186,14 @@ class SearchService {
         status: set.status,
         difficulty: set.difficulty,
         isShared: set.isShared,
+        questionCount: set.questions?.length || 0,
+        creatorName: set.userId?.fullName || "Ẩn danh",
+        subject: set.subjectId
+          ? {
+              id: set.subjectId._id?.toString() || set.subjectId.toString(),
+              name: set.subjectId.subjectName || set.subjectId.name,
+            }
+          : null,
         createdAt: set.createdAt,
       })),
       pagination: {
