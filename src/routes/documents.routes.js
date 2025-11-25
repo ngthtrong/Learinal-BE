@@ -37,6 +37,20 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: { fileSize: 20 * 1024 * 1024 },
+  preservePath: false,
+  // Fix encoding issues with filenames
+  fileFilter: (req, file, cb) => {
+    // Decode the filename properly to handle UTF-8 characters
+    try {
+      // Convert buffer to string with proper encoding
+      const originalname = Buffer.from(file.originalname, "latin1").toString("utf8");
+      file.originalname = originalname;
+    } catch (e) {
+      // If conversion fails, keep original
+      logger.warn({ error: e.message }, "Failed to convert filename encoding");
+    }
+    cb(null, true);
+  },
 });
 
 const createSchema = Joi.object({

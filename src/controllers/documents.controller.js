@@ -46,12 +46,14 @@ module.exports = {
       }
 
       const now = new Date();
+
+      // originalFileName is already properly decoded by multer fileFilter
       const toCreate = {
         subjectId: req.body.subjectId,
         ownerId: user.id,
         originalFileName: req.file.originalname,
         fileType: ext,
-        fileSize: Math.round(req.file.size / (1024 * 1024)),
+        fileSize: parseFloat((req.file.size / (1024 * 1024)).toFixed(2)), // Store as decimal MB
         storagePath: tempFilePath, // Temporary path
         status: "Processing",
         uploadedAt: now,
@@ -158,13 +160,16 @@ module.exports = {
       // Xóa file trong storage
       if (doc.storagePath) {
         await _storage.delete(doc.storagePath).catch((err) => {
-          logger.warn({ err, storagePath: doc.storagePath }, "[documents] Failed to delete file from storage");
+          logger.warn(
+            { err, storagePath: doc.storagePath },
+            "[documents] Failed to delete file from storage"
+          );
         });
       }
 
       // Xóa document từ database
       await docsRepo.deleteById(req.params.id);
-      
+
       return res.status(204).send();
     } catch (e) {
       next(e);
@@ -176,28 +181,28 @@ module.exports = {
     try {
       const user = req.user;
       const { subjectId } = req.params;
-      
+
       // Validate và parse pagination params
-      const page = Math.max(1, parseInt(req.query.page || '1', 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+
       // Filter: chỉ lấy documents của user hiện tại và subject được chỉ định
       const filter = {
         subjectId,
         ownerId: user.id,
       };
-      
+
       // Optional status filter
       if (req.query.status) {
         filter.status = req.query.status;
       }
-      
+
       const result = await docsRepo.paginate(filter, {
         page,
         pageSize,
         sort: { uploadedAt: -1 },
       });
-      
+
       return res.status(200).json({
         items: result.items.map(mapId),
         meta: {

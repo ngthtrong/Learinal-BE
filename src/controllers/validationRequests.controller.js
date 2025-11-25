@@ -18,18 +18,81 @@ module.exports = {
   // GET /validation-requests
   list: async (req, res, next) => {
     try {
+      const user = req.user;
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+
+      // Build filter depending on role & desired visibility
+      const status = (req.query.status || '').trim();
+      const setId = (req.query.setId || '').trim();
+      let filter;
+      if (user.role === 'Learner') {
+        filter = { learnerId: user.id };
+        if (status) filter.status = status;
+        if (setId) filter.setId = setId;
+      } else if (user.role === 'Expert') {
+        // Show assigned to this expert OR unassigned (PendingAssignment) unless a specific status is requested
+        if (status) {
+          if (status === 'PendingAssignment') {
+            filter = { status: 'PendingAssignment' };
+            if (setId) filter.setId = setId;
+          } else {
+            filter = { expertId: user.id, status };
+            if (setId) filter.setId = setId;
+          }
+        } else {
+          filter = { $or: [ { expertId: user.id }, { status: 'PendingAssignment' } ] };
+          if (setId) filter.setId = setId; // narrow both arms by setId using $and-like pattern (handled below)
+        }
+      } else {
+        // Admin sees all (optionally filtered by status)
+        filter = {};
+        if (status) filter.status = status;
+        if (setId) filter.setId = setId;
+      }
+
+      // If setId provided with $or filter, convert to $and to ensure both branches constrained
+      if (filter.$or && filter.setId) {
+        const or = filter.$or;
+        const setConstraint = { setId: filter.setId };
+        delete filter.setId;
+        filter = { $and: [ { $or: or }, setConstraint ] };
+      }
+
       const { items, totalItems, totalPages } = await repo.paginate(
-        {},
+        filter,
         { page, pageSize, sort: { createdAt: -1 } }
       );
-      res
-        .status(200)
-        .json({
-          items: (items || []).map(mapId),
-          meta: { page, pageSize, total: totalItems, totalPages },
-        });
+
+      let enriched = items || [];
+      // Attach question set title, learner name, expert name
+      if (enriched.length > 0) {
+        const QuestionSetsRepository = require('../repositories/questionSets.repository');
+        const UsersRepository = require('../repositories/users.repository');
+        const qsRepo = new QuestionSetsRepository();
+        const usersRepo = new UsersRepository();
+        const setIds = [...new Set(enriched.map(r => String(r.setId)))];
+        const learnerIds = [...new Set(enriched.map(r => String(r.learnerId)))];
+        const expertIds = [...new Set(enriched.filter(r => !!r.expertId).map(r => String(r.expertId)))];
+        const sets = setIds.length ? await qsRepo.find({ _id: { $in: setIds } }) : [];
+        const learners = learnerIds.length ? await usersRepo.find({ _id: { $in: learnerIds } }) : [];
+        const experts = expertIds.length ? await usersRepo.find({ _id: { $in: expertIds } }) : [];
+        const setMap = new Map(sets.map(s => [String(s._id), { title: s.title, questionCount: (s.questions||[]).length }]));
+        const learnerMap = new Map(learners.map(u => [String(u._id), { name: u.fullName || u.displayName || u.email }]));
+        const expertMap = new Map(experts.map(u => [String(u._id), { name: u.fullName || u.displayName || u.email }]));
+        enriched = enriched.map(r => ({
+          ...r,
+          questionSetTitle: setMap.get(String(r.setId))?.title,
+          questionCount: setMap.get(String(r.setId))?.questionCount,
+          learnerName: learnerMap.get(String(r.learnerId))?.name,
+          expertName: r.expertId ? expertMap.get(String(r.expertId))?.name : undefined,
+        }));
+      }
+
+      res.status(200).json({
+        items: enriched.map(mapId),
+        meta: { page, pageSize, total: totalItems, totalPages },
+      });
     } catch (e) {
       next(e);
     }
@@ -41,6 +104,55 @@ module.exports = {
       const item = await repo.findById(req.params.id);
       if (!item) return res.status(404).json({ code: "NotFound", message: "Not found" });
       res.status(200).json(mapId(item));
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // GET /validation-requests/:id/detail
+  detail: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const request = await repo.findById(req.params.id);
+      if (!request) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
+
+      // Authorization: learner (owner), assigned expert, or admin
+      const isLearner = String(request.learnerId) === String(user.id);
+      const isExpert = request.expertId && String(request.expertId) === String(user.id);
+      const isAdmin = user.role === 'Admin';
+      if (!isLearner && !isExpert && !isAdmin) {
+        return res.status(403).json({ code: 'Forbidden', message: 'Access denied' });
+      }
+
+      const QuestionSetsRepository = require('../repositories/questionSets.repository');
+      const UsersRepository = require('../repositories/users.repository');
+      const qsRepo = new QuestionSetsRepository();
+      const usersRepo = new UsersRepository();
+
+      const questionSet = await qsRepo.findById(String(request.setId));
+      const learner = await usersRepo.findById(String(request.learnerId));
+      const expert = request.expertId ? await usersRepo.findById(String(request.expertId)) : null;
+
+      res.status(200).json({
+        request: mapId(request),
+        questionSet: questionSet ? {
+          id: String(questionSet._id),
+            title: questionSet.title,
+            description: questionSet.description,
+            status: questionSet.status,
+            questions: questionSet.questions || [],
+            questionCount: (questionSet.questions || []).length,
+        } : null,
+        learner: learner ? {
+          id: String(learner._id),
+          name: learner.fullName || learner.displayName || learner.email,
+          email: learner.email,
+        } : null,
+        expert: expert ? {
+          id: String(expert._id),
+          name: expert.fullName || expert.displayName || expert.email,
+        } : null,
+      });
     } catch (e) {
       next(e);
     }
@@ -60,6 +172,25 @@ module.exports = {
         notificationService.emitValidationAssigned(req.body.expertId, updated);
       }
 
+      res.status(200).json(mapId(updated));
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // PATCH /validation-requests/:id/claim
+  // Expert claims a pending assignment request
+  claim: async (req, res, next) => {
+    try {
+      const expertId = req.user.id;
+      const requestId = req.params.id;
+      const request = await repo.findById(requestId);
+      if (!request) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
+      if (request.status !== 'PendingAssignment' || request.expertId) {
+        return res.status(400).json({ code: 'InvalidState', message: 'Request is not available to claim' });
+      }
+      const updated = await repo.updateById(requestId, { $set: { expertId, status: 'Assigned', claimedAt: new Date() } }, { new: true });
+      notificationService.emitValidationAssigned(expertId, updated);
       res.status(200).json(mapId(updated));
     } catch (e) {
       next(e);

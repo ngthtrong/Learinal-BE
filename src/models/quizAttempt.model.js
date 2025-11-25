@@ -12,8 +12,9 @@ const QuizAttemptSchema = new Schema({
   score: { type: Number, required: true },
   userAnswers: { type: [UserAnswerSchema], required: true },
   isCompleted: { type: Boolean, required: true },
-  startTime: { type: Date, required: true },
-  endTime: { type: Date, required: true },
+  isTimed: { type: Boolean, default: true },
+  startTime: { type: Date },
+  endTime: { type: Date },
 }, { timestamps: true, versionKey: false, collection: 'quizAttempts' });
 
 QuizAttemptSchema.index({ userId: 1, endTime: -1 });

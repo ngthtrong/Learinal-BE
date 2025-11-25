@@ -32,7 +32,7 @@ async function checkExportLimits(req, res, next) {
 
     // Get export limits from entitlements
     const entitlements = subscription.planId.entitlements || {};
-    const exportLimit = entitlements.exportLimits || entitlements.shareLimits;
+    const exportLimit = entitlements.exportLimits;
 
     // If unlimited, allow
     if (exportLimit === "unlimited" || exportLimit === -1) {

@@ -147,6 +147,8 @@ class AdminService {
    */
   async getSystemStats() {
     const User = require("../models/user.model");
+    const Subject = require("../models/subject.model");
+    const Document = require("../models/document.model");
     const QuestionSet = require("../models/questionSet.model");
     const QuizAttempt = require("../models/quizAttempt.model");
     const UserSubscription = require("../models/userSubscription.model");
@@ -156,6 +158,8 @@ class AdminService {
       activeUsers,
       learners,
       experts,
+      totalSubjects,
+      totalDocuments,
       totalQuestionSets,
       totalQuizAttempts,
       activeSubscriptions,
@@ -164,6 +168,8 @@ class AdminService {
       User.countDocuments({ status: "Active" }),
       User.countDocuments({ role: "Learner" }),
       User.countDocuments({ role: "Expert" }),
+      Subject.countDocuments({}),
+      Document.countDocuments({}),
       QuestionSet.countDocuments({}),
       QuizAttempt.countDocuments({}),
       UserSubscription.countDocuments({ status: "Active" }),
@@ -177,6 +183,8 @@ class AdminService {
         experts,
       },
       content: {
+        subjects: totalSubjects,
+        documents: totalDocuments,
         questionSets: totalQuestionSets,
         quizAttempts: totalQuizAttempts,
       },

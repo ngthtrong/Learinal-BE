@@ -9,19 +9,22 @@ const logger = require("../utils/logger");
 
 module.exports = async function questionsGenerate(payload) {
   logger.info({ payload }, "[questions.generate] job received");
-  
-  const { 
-    questionSetId, 
+
+  const {
+    questionSetId,
     userId,
     subjectId,
-    numQuestions = 10, 
+    numQuestions = 10,
     difficulty = "Understand",
     difficultyDistribution = null,
     topicDistribution = null,
   } = payload || {};
-  
+
   if (!questionSetId || !userId) {
-    logger.error({ questionSetId, userId, payload }, "[questions.generate] missing required fields");
+    logger.error(
+      { questionSetId, userId, payload },
+      "[questions.generate] missing required fields"
+    );
     return;
   }
 
@@ -41,11 +44,7 @@ module.exports = async function questionsGenerate(payload) {
     }
 
     // Update status to Processing
-    await qrepo.updateById(
-      questionSetId,
-      { $set: { status: "Processing" } },
-      { new: true }
-    );
+    await qrepo.updateById(questionSetId, { $set: { status: "Processing" } }, { new: true });
 
     // Get subject's table of contents
     let tableOfContents = [];
@@ -56,7 +55,10 @@ module.exports = async function questionsGenerate(payload) {
           tableOfContents = subject.tableOfContents;
         }
       } catch (err) {
-        logger.warn({ subjectId, err: err?.message }, "[questions.generate] failed to get subject TOC (non-fatal)");
+        logger.warn(
+          { subjectId, err: err?.message },
+          "[questions.generate] failed to get subject TOC (non-fatal)"
+        );
       }
     }
 
@@ -89,7 +91,10 @@ module.exports = async function questionsGenerate(payload) {
           contextText = contextText.slice(0, 18000);
         }
       } catch (err) {
-        logger.warn({ subjectId, userId, err: err?.message }, "[questions.generate] failed to get documents context (non-fatal)");
+        logger.warn(
+          { subjectId, userId, err: err?.message },
+          "[questions.generate] failed to get documents context (non-fatal)"
+        );
       }
     }
 
@@ -100,65 +105,80 @@ module.exports = async function questionsGenerate(payload) {
 
     // Calculate total questions
     let totalQuestions = numQuestions;
-    if (difficultyDistribution && typeof difficultyDistribution === 'object') {
-      totalQuestions = Object.values(difficultyDistribution).reduce((sum, count) => sum + (count || 0), 0);
+    if (difficultyDistribution && typeof difficultyDistribution === "object") {
+      totalQuestions = Object.values(difficultyDistribution).reduce(
+        (sum, count) => sum + (count || 0),
+        0
+      );
     }
 
-    logger.info({ 
-      questionSetId, 
-      userId, 
-      totalQuestions,
-      contextLength: contextText?.length,
-      hasTOC: tableOfContents?.length > 0
-    }, "[questions.generate] calling LLM");
+    logger.info(
+      {
+        questionSetId,
+        userId,
+        totalQuestions,
+        contextLength: contextText?.length,
+        hasTOC: tableOfContents?.length > 0,
+      },
+      "[questions.generate] calling LLM"
+    );
 
     // For large question sets, split into batches to avoid timeout
     const MAX_QUESTIONS_PER_BATCH = 25;
     const needsBatching = totalQuestions > MAX_QUESTIONS_PER_BATCH;
-    
+
     if (needsBatching) {
-      logger.info({ 
-        questionSetId, 
-        totalQuestions,
-        maxPerBatch: MAX_QUESTIONS_PER_BATCH 
-      }, "[questions.generate] using batch generation for large question set");
+      logger.info(
+        {
+          questionSetId,
+          totalQuestions,
+          maxPerBatch: MAX_QUESTIONS_PER_BATCH,
+        },
+        "[questions.generate] using batch generation for large question set"
+      );
     }
 
     // Generate questions using LLM with dynamic timeout based on question count
     // Estimate: ~2 seconds per question + 10 second base
     const questionsPerCall = needsBatching ? MAX_QUESTIONS_PER_BATCH : totalQuestions;
-    const estimatedTimeoutMs = Math.max(30000, (questionsPerCall * 2000) + 10000);
+    const estimatedTimeoutMs = Math.max(30000, questionsPerCall * 2000 + 10000);
     const llmConfigWithTimeout = {
       ...llm,
-      timeoutMs: estimatedTimeoutMs
+      timeoutMs: estimatedTimeoutMs,
     };
-    
-    logger.info({ 
-      questionSetId, 
-      totalQuestions,
-      questionsPerCall,
-      timeoutMs: estimatedTimeoutMs 
-    }, "[questions.generate] using dynamic timeout");
-    
+
+    logger.info(
+      {
+        questionSetId,
+        totalQuestions,
+        questionsPerCall,
+        timeoutMs: estimatedTimeoutMs,
+      },
+      "[questions.generate] using dynamic timeout"
+    );
+
     const client = new LLMClient(llmConfigWithTimeout);
     let allQuestions = [];
-    
+
     try {
       if (needsBatching) {
         // Generate in batches
         const numBatches = Math.ceil(totalQuestions / MAX_QUESTIONS_PER_BATCH);
-        
+
         for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
           const remainingQuestions = totalQuestions - allQuestions.length;
           const questionsThisBatch = Math.min(MAX_QUESTIONS_PER_BATCH, remainingQuestions);
-          
-          logger.info({ 
-            questionSetId, 
-            batchIndex: batchIndex + 1,
-            totalBatches: numBatches,
-            questionsThisBatch 
-          }, "[questions.generate] generating batch");
-          
+
+          logger.info(
+            {
+              questionSetId,
+              batchIndex: batchIndex + 1,
+              totalBatches: numBatches,
+              questionsThisBatch,
+            },
+            "[questions.generate] generating batch"
+          );
+
           // For batched generation, use simpler distribution
           const result = await client.generateQuestions({
             contextText,
@@ -168,23 +188,25 @@ module.exports = async function questionsGenerate(payload) {
             topicDistribution: null,
             tableOfContents,
           });
-          
+
           if (result.questions && Array.isArray(result.questions)) {
             allQuestions.push(...result.questions);
           }
-          
+
           // Small delay between batches to avoid rate limiting
           if (batchIndex < numBatches - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         }
-        
-        logger.info({ 
-          questionSetId, 
-          totalGenerated: allQuestions.length,
-          expected: totalQuestions 
-        }, "[questions.generate] batch generation completed");
-        
+
+        logger.info(
+          {
+            questionSetId,
+            totalGenerated: allQuestions.length,
+            expected: totalQuestions,
+          },
+          "[questions.generate] batch generation completed"
+        );
       } else {
         // Single call for smaller sets
         const result = await client.generateQuestions({
@@ -198,36 +220,52 @@ module.exports = async function questionsGenerate(payload) {
         allQuestions = result.questions || [];
       }
     } catch (llmError) {
-      logger.error({ 
-        questionSetId, 
-        userId,
-        err: llmError?.message || llmError,
-        stack: llmError?.stack,
-        code: llmError?.code,
-        generatedSoFar: allQuestions.length
-      }, "[questions.generate] LLM call failed");
+      logger.error(
+        {
+          questionSetId,
+          userId,
+          err: llmError?.message || llmError,
+          stack: llmError?.stack,
+          code: llmError?.code,
+          generatedSoFar: allQuestions.length,
+        },
+        "[questions.generate] LLM call failed"
+      );
       throw llmError;
     }
 
     const questions = allQuestions;
 
-    logger.info({ 
-      questionSetId, 
-      userId, 
-      generatedCount: questions?.length || 0 
-    }, "[questions.generate] LLM returned questions");
+    logger.info(
+      {
+        questionSetId,
+        userId,
+        generatedCount: questions?.length || 0,
+      },
+      "[questions.generate] LLM returned questions"
+    );
 
     // Validate LLM response
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      throw new Error(`LLM returned no valid questions. Expected ${totalQuestions}, got ${questions?.length || 0}`);
+      throw new Error(
+        `LLM returned no valid questions. Expected ${totalQuestions}, got ${questions?.length || 0}`
+      );
     }
 
+    const percentageGenerated = (questions.length / totalQuestions) * 100;
+
     if (questions.length < totalQuestions * 0.8) {
-      logger.warn({ 
-        questionSetId, 
-        expected: totalQuestions, 
-        received: questions.length 
-      }, "[questions.generate] LLM returned fewer questions than requested");
+      logger.warn(
+        {
+          questionSetId,
+          expected: totalQuestions,
+          received: questions.length,
+          percentage: percentageGenerated.toFixed(1),
+        },
+        "[questions.generate] LLM returned fewer questions than requested"
+      );
+
+      // Add warning to notification later
     }
 
     // Update question set with generated questions
@@ -237,29 +275,47 @@ module.exports = async function questionsGenerate(payload) {
       { new: true }
     );
 
-    logger.info({ 
-      questionSetId, 
-      userId, 
-      questionsCount: questions?.length || 0 
-    }, "[questions.generate] completed successfully");
+    logger.info(
+      {
+        questionSetId,
+        userId,
+        questionsCount: questions?.length || 0,
+      },
+      "[questions.generate] completed successfully"
+    );
 
     // Create in-app notification
     try {
+      const notificationTitle =
+        questions.length < totalQuestions
+          ? "Bộ đề đã được tạo (không đủ số lượng)"
+          : "Bộ đề đã được tạo xong";
+
+      const notificationMessage =
+        questions.length < totalQuestions
+          ? `Bộ đề "${qset.title}" đã được tạo với ${questions?.length || 0}/${totalQuestions} câu hỏi. Hệ thống không thể tạo đủ số lượng yêu cầu do giới hạn nội dung tài liệu hoặc LLM. Bạn có thể thêm tài liệu hoặc thử lại.`
+          : `Bộ đề "${qset.title}" với ${questions?.length || 0} câu hỏi đã được tạo thành công.`;
+
+      const notificationType = questions.length < totalQuestions * 0.8 ? "warning" : "success";
+
       await notificationsRepo.create({
         userId,
-        title: "Bộ đề đã được tạo xong",
-        message: `Bộ đề "${qset.title}" với ${questions?.length || 0} câu hỏi đã được tạo thành công.`,
-        type: "success",
+        title: notificationTitle,
+        message: notificationMessage,
+        type: notificationType,
         relatedEntityType: "QuestionSet",
         relatedEntityId: questionSetId,
       });
       logger.info({ questionSetId, userId }, "[questions.generate] notification created");
     } catch (notifErr) {
-      logger.error({ 
-        questionSetId, 
-        userId, 
-        err: notifErr?.message || notifErr 
-      }, "[questions.generate] failed to create notification (non-fatal)");
+      logger.error(
+        {
+          questionSetId,
+          userId,
+          err: notifErr?.message || notifErr,
+        },
+        "[questions.generate] failed to create notification (non-fatal)"
+      );
     }
 
     // Emit real-time notification
@@ -267,46 +323,52 @@ module.exports = async function questionsGenerate(payload) {
       notificationService.emitQuestionSetGenerated(userId.toString(), updated);
       logger.info({ questionSetId, userId }, "[questions.generate] real-time event emitted");
     } catch (emitErr) {
-      logger.error({ 
-        questionSetId, 
-        userId, 
-        err: emitErr?.message || emitErr 
-      }, "[questions.generate] failed to emit real-time event (non-fatal)");
+      logger.error(
+        {
+          questionSetId,
+          userId,
+          err: emitErr?.message || emitErr,
+        },
+        "[questions.generate] failed to emit real-time event (non-fatal)"
+      );
     }
-
   } catch (err) {
-    logger.error({ 
-      questionSetId, 
-      userId, 
-      err: err?.message || err,
-      stack: err?.stack,
-      errorType: err?.constructor?.name
-    }, "[questions.generate] failed");
+    logger.error(
+      {
+        questionSetId,
+        userId,
+        err: err?.message || err,
+        stack: err?.stack,
+        errorType: err?.constructor?.name,
+      },
+      "[questions.generate] failed"
+    );
 
     // Update status to Error
     try {
-      await qrepo.updateById(
-        questionSetId,
-        { $set: { status: "Error" } },
-        { new: true }
-      );
+      await qrepo.updateById(questionSetId, { $set: { status: "Error" } }, { new: true });
     } catch (updateErr) {
-      logger.error({ questionSetId, err: updateErr?.message }, "[questions.generate] failed to update error status");
+      logger.error(
+        { questionSetId, err: updateErr?.message },
+        "[questions.generate] failed to update error status"
+      );
     }
 
     // Create error notification with more details
     try {
       let errorMessage = "Không thể tạo bộ đề. Vui lòng thử lại sau.";
-      
+
       // Provide more specific error messages
-      if (err?.message?.includes('timeout') || err?.code === 'ECONNABORTED') {
-        errorMessage = "Quá trình tạo bộ đề mất quá nhiều thời gian. Vui lòng thử với ít câu hỏi hơn hoặc thử lại sau.";
-      } else if (err?.message?.includes('API key') || err?.message?.includes('authentication')) {
+      if (err?.message?.includes("timeout") || err?.code === "ECONNABORTED") {
+        errorMessage =
+          "Quá trình tạo bộ đề mất quá nhiều thời gian. Vui lòng thử với ít câu hỏi hơn hoặc thử lại sau.";
+      } else if (err?.message?.includes("API key") || err?.message?.includes("authentication")) {
         errorMessage = "Lỗi cấu hình hệ thống. Vui lòng liên hệ quản trị viên.";
-      } else if (err?.message?.includes('no valid questions')) {
-        errorMessage = "Không thể tạo câu hỏi từ tài liệu. Vui lòng kiểm tra lại nội dung tài liệu.";
+      } else if (err?.message?.includes("no valid questions")) {
+        errorMessage =
+          "Không thể tạo câu hỏi từ tài liệu. Vui lòng kiểm tra lại nội dung tài liệu.";
       }
-      
+
       await notificationsRepo.create({
         userId,
         title: "Tạo bộ đề thất bại",
@@ -316,7 +378,10 @@ module.exports = async function questionsGenerate(payload) {
         relatedEntityId: questionSetId,
       });
     } catch (notifErr) {
-      logger.error({ questionSetId, userId, err: notifErr?.message }, "[questions.generate] failed to create error notification");
+      logger.error(
+        { questionSetId, userId, err: notifErr?.message },
+        "[questions.generate] failed to create error notification"
+      );
     }
   }
 };
