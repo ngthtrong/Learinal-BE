@@ -23,4 +23,24 @@ module.exports = {
       res.status(200).json(mapId(updated));
     } catch (e) { next(e); }
   },
+
+  // POST /notifications/mark-all-read (mark all as read)
+  markAllRead: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const result = await repo.updateMany({ userId: user.id, isRead: false }, { $set: { isRead: true } });
+      res.status(200).json({ success: true, modifiedCount: result.modifiedCount || 0 });
+    } catch (e) { next(e); }
+  },
+
+  // DELETE /notifications/:id (delete notification)
+  delete: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const notification = await repo.findById(req.params.id);
+      if (!notification || String(notification.userId) !== String(user.id)) return res.status(404).json({ code: 'NotFound', message: 'Not found' });
+      await repo.deleteById(req.params.id);
+      res.status(200).json({ success: true, message: 'Notification deleted' });
+    } catch (e) { next(e); }
+  },
 };

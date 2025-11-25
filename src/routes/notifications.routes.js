@@ -9,6 +9,8 @@ const router = express.Router();
 
 router.get('/', rateLimit({ limit: 60 }), authenticateJWT, controller.list);
 router.patch('/:id', rateLimit({ limit: 30 }), authenticateJWT, controller.update);
+router.delete('/:id', rateLimit({ limit: 30 }), authenticateJWT, controller.delete);
+router.post('/mark-all-read', rateLimit({ limit: 30 }), authenticateJWT, controller.markAllRead);
 
 // WebSocket testing endpoints (admin only)
 router.post(

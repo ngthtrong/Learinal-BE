@@ -112,6 +112,7 @@ async function checkQuestionGenerationLimit(req, res, next) {
 async function checkValidationRequestLimit(req, res, next) {
   try {
     const { userSubscriptionsService, usageTrackingRepository } = req.app.locals;
+    const logger = req.app.locals.logger || console;
 
     // Get active subscription from UserSubscription collection
     let subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
@@ -134,13 +135,22 @@ async function checkValidationRequestLimit(req, res, next) {
     }
 
     if (!subscription || !subscription.plan) {
-      throw Object.assign(new Error("No active subscription plan"), {
+      logger.warn({ userId: req.user.id }, "[checkValidationRequestLimit] No active subscription");
+      throw Object.assign(new Error("Bạn cần có gói đăng ký để sử dụng tính năng này"), {
         status: 403,
         code: "NoSubscription",
       });
     }
 
     const { maxValidationRequests } = subscription.plan.entitlements;
+    logger.info(
+      { 
+        userId: req.user.id, 
+        planName: subscription.plan.planName,
+        maxValidationRequests 
+      }, 
+      "[checkValidationRequestLimit] Checking validation request limit"
+    );
 
     // If unlimited, skip check
     if (maxValidationRequests === "unlimited") {
@@ -159,14 +169,50 @@ async function checkValidationRequestLimit(req, res, next) {
       billingCycleStart
     );
 
+    logger.info(
+      {
+        userId: req.user.id,
+        count,
+        maxValidationRequests,
+        billingCycleStart,
+      },
+      "[checkValidationRequestLimit] Usage count"
+    );
+
     if (count >= maxValidationRequests) {
+      logger.warn(
+        {
+          userId: req.user.id,
+          count,
+          maxValidationRequests,
+        },
+        "[checkValidationRequestLimit] Limit exceeded"
+      );
       throw Object.assign(
-        new Error(`Monthly validation request limit reached (${maxValidationRequests})`),
-        { status: 403, code: "LimitExceeded" }
+        new Error(
+          `Bạn đã hết lượt gửi kiểm duyệt trong tháng này (${count}/${maxValidationRequests}). Vui lòng nâng cấp gói để tiếp tục sử dụng.`
+        ),
+        { 
+          status: 403, 
+          code: "LimitExceeded",
+          details: {
+            used: count,
+            limit: maxValidationRequests,
+            feature: "validation_requests"
+          }
+        }
       );
     }
 
     req.entitlement = { usedRequests: count, maxRequests: maxValidationRequests };
+    logger.info(
+      {
+        userId: req.user.id,
+        usedRequests: count,
+        maxRequests: maxValidationRequests,
+      },
+      "[checkValidationRequestLimit] Check passed"
+    );
     next();
   } catch (e) {
     next(e);
