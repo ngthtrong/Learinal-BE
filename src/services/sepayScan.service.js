@@ -1,6 +1,8 @@
 const createSepayClient = require("../adapters/sepayClient");
-const { sepay } = require("../config");
+const { sepay, email: emailCfg } = require("../config");
 const { UsersRepository, SubscriptionPlansRepository } = require("../repositories");
+const { enqueueEmail } = require("../adapters/queue");
+const logger = require("../utils/logger");
 
 function extractUserId(text) {
   if (!text || typeof text !== "string") return null;
@@ -20,7 +22,8 @@ function extractPlanId(text) {
 class SepayScanService {
   constructor({ usersRepository, subscriptionPlansRepository } = {}) {
     this.usersRepository = usersRepository || new UsersRepository();
-    this.subscriptionPlansRepository = subscriptionPlansRepository || new SubscriptionPlansRepository();
+    this.subscriptionPlansRepository =
+      subscriptionPlansRepository || new SubscriptionPlansRepository();
     this.client = createSepayClient(sepay);
   }
 
@@ -48,7 +51,7 @@ class SepayScanService {
 
     // Create a map of planId -> plan for quick lookup
     const planMap = new Map();
-    allPlans.forEach(plan => {
+    allPlans.forEach((plan) => {
       const planId = (plan.id || plan._id).toString().toLowerCase();
       planMap.set(planId, plan);
     });
@@ -60,28 +63,36 @@ class SepayScanService {
     for (const tx of txs) {
       const amountIn = Number(tx?.amount_in || 0);
       const content = String(tx?.transaction_content || "");
-      
+
       // Check for SEVQR prefix
       if (!/SEVQR/i.test(content)) continue;
-      
+
       const userId = extractUserId(content);
       const planId = extractPlanId(content);
-      
+
       if (!userId || !planId) continue;
-      
+
       // Find matching plan by planId
       const plan = planMap.get(planId);
       if (!plan) {
         details.push({ userId, txId: tx.id, amountIn, content, action: "plan_not_found", planId });
         continue;
       }
-      
+
       // Verify amount matches plan price
       if (amountIn !== plan.price) {
-        details.push({ userId, txId: tx.id, amountIn, content, action: "amount_mismatch", expected: plan.price, actual: amountIn });
+        details.push({
+          userId,
+          txId: tx.id,
+          amountIn,
+          content,
+          action: "amount_mismatch",
+          expected: plan.price,
+          actual: amountIn,
+        });
         continue;
       }
-      
+
       matched++;
       const curr = await this.usersRepository.findByUserId(userId);
       if (curr && curr.subscriptionStatus === "None") {
@@ -100,9 +111,60 @@ class SepayScanService {
           subscriptionRenewalDate: renewalDate,
         });
         updated++;
-        details.push({ userId, txId: tx.id, amountIn, content, planId, planName: plan.planName, action: "activated" });
+        details.push({
+          userId,
+          txId: tx.id,
+          amountIn,
+          content,
+          planId,
+          planName: plan.planName,
+          action: "activated",
+        });
+
+        // Send payment success email to learner
+        try {
+          if (emailCfg.paymentSuccessTemplateId) {
+            await enqueueEmail({
+              to: curr.email,
+              subject: "Thanh toán thành công - Payment Successful",
+              templateId: emailCfg.paymentSuccessTemplateId,
+              variables: {
+                user_name: curr.fullName,
+                plan_name: plan.planName,
+                amount: amountIn.toLocaleString("vi-VN"),
+                transaction_id: tx.id || tx.reference_number || "N/A",
+                renewal_date: renewalDate.toLocaleDateString("vi-VN", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                }),
+                billing_cycle: plan.billingCycle,
+              },
+            });
+            logger.info(
+              { userId, email: curr.email, planName: plan.planName },
+              "Payment success email enqueued"
+            );
+          } else {
+            logger.warn({ userId }, "Payment success template ID not configured, skipping email");
+          }
+        } catch (emailError) {
+          logger.error(
+            { userId, error: emailError.message },
+            "Failed to enqueue payment success email"
+          );
+          // Don't fail the transaction if email fails
+        }
       } else {
-        details.push({ userId, txId: tx.id, amountIn, content, planId, planName: plan.planName, action: "noop" });
+        details.push({
+          userId,
+          txId: tx.id,
+          amountIn,
+          content,
+          planId,
+          planName: plan.planName,
+          action: "noop",
+        });
       }
     }
 

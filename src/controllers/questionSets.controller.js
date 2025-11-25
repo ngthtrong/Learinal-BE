@@ -186,8 +186,21 @@ module.exports = {
     try {
       const user = req.user;
       const item = await repo.findById(req.params.id);
-      if (!item || String(item.userId) !== String(user.id))
+
+      if (!item) {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
+      }
+
+      // Allow access if:
+      // 1. User is the owner, OR
+      // 2. Question set is shared publicly
+      const isOwner = String(item.userId) === String(user.id);
+      const isPubliclyShared = item.isShared === true;
+
+      if (!isOwner && !isPubliclyShared) {
+        return res.status(404).json({ code: "NotFound", message: "Not found" });
+      }
+
       res.status(200).json(mapId(item));
     } catch (e) {
       next(e);

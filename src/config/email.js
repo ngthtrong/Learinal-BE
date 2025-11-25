@@ -5,4 +5,6 @@ module.exports = {
   fromAddress: process.env.EMAIL_FROM || "no-reply@learinal.app",
   verifyTemplateId: process.env.EMAIL_VERIFY_TEMPLATE_ID || "",
   resetTemplateId: process.env.PASSWORD_RESET_TEMPLATE_ID || "",
+  // SendGrid Dynamic Template ID for payment success notification
+  paymentSuccessTemplateId: process.env.PAYMENT_SUCCESS_TEMPLATE_ID || "",
 };
