@@ -11,4 +11,5 @@ module.exports = {
   Notification: require("./notification.model"),
   RefreshToken: require("./refreshToken.model"),
   PasswordResetToken: require("./passwordResetToken.model"),
+  UsageTracking: require("./usageTracking.model"),
 };

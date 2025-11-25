@@ -51,12 +51,16 @@ class SubscriptionPlansService {
     await this.repository.updateById(id, { status: "Archived" }, { new: true });
   }
 
+  async deletePlan(id) {
+    await this.repository.deleteById(id);
+  }
+
   validateEntitlements(entitlements) {
     const required = [
       "maxMonthlyTestGenerations",
       "maxValidationRequests",
       "priorityProcessing",
-      "shareLimits",
+      "canShare",
       "maxSubjects",
     ];
 

@@ -66,4 +66,14 @@ module.exports = {
       next(e);
     }
   },
+
+  remove: async (req, res, next) => {
+    try {
+      const { subscriptionPlansService } = req.app.locals;
+      await subscriptionPlansService.deletePlan(req.params.id);
+      res.json({ status: "success", message: "Plan deleted" });
+    } catch (e) {
+      next(e);
+    }
+  },
 };

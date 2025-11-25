@@ -142,6 +142,15 @@ module.exports = {
       };
       const created = await repo.create(toCreate);
 
+      // Track usage for subscription limit enforcement
+      const { usageTrackingRepository } = req.app.locals;
+      await usageTrackingRepository.trackAction(
+        user.id,
+        "question_set_generation",
+        created._id.toString(),
+        { subjectId, numQuestions: totalQuestions, difficulty }
+      );
+
       // Enqueue question generation job
       const { enqueueQuestionsGenerate } = require("../adapters/queue");
       const logger = require("../utils/logger");
@@ -310,6 +319,15 @@ module.exports = {
         status: "PendingAssignment",
         requestTime: new Date(),
       });
+
+      // Track usage for subscription limit enforcement
+      const { usageTrackingRepository } = req.app.locals;
+      await usageTrackingRepository.trackAction(
+        userId,
+        "validation_request",
+        validationRequest._id.toString(),
+        { setId }
+      );
 
       // 4. Enqueue assignment job
       const { enqueueEmail } = require("../adapters/queue");

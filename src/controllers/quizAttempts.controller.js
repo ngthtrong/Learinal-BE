@@ -12,16 +12,18 @@ module.exports = {
   create: async (req, res, next) => {
     try {
       const user = req.user;
-      const { setId } = req.body || {};
+      const { setId, isTimed = true } = req.body || {};
       if (!setId)
         return res.status(400).json({ code: "ValidationError", message: "setId required" });
-      const start = new Date();
+      
+      const start = isTimed ? new Date() : null;
       const created = await attemptsRepo.create({
         userId: user.id,
         setId,
         score: 0,
         userAnswers: [],
         isCompleted: false,
+        isTimed,
         startTime: start,
         endTime: start,
       });
@@ -89,7 +91,12 @@ module.exports = {
       });
 
       return res.status(200).json({
-        items: result.items.map((item) => ({ id: String(item._id || item.id), ...item })),
+        items: result.items.map((item) => ({
+          id: String(item._id || item.id),
+          ...item,
+          startedAt: item.startTime,     // Map for frontend compatibility
+          completedAt: item.isCompleted ? item.endTime : null,  // Only set if completed
+        })),
         meta: {
           page: result.meta.page,
           pageSize: result.meta.pageSize,
@@ -108,18 +115,37 @@ module.exports = {
       const user = req.user;
       const attemptId = req.params.id;
       const { answers } = req.body || {};
+      
+      console.log('=== QUIZ SUBMIT DEBUG ===');
+      console.log('Received answers:', JSON.stringify(answers, null, 2));
+      
       const attempt = await attemptsRepo.findById(attemptId);
       if (!attempt || String(attempt.userId) !== String(user.id))
         return res.status(404).json({ code: "NotFound", message: "Attempt not found" });
       const qset = await qsetRepo.findById(attempt.setId);
       if (!qset)
         return res.status(404).json({ code: "NotFound", message: "Question set not found" });
+      
+      console.log('Question set questions count:', qset.questions?.length);
+      console.log('Question IDs in set:', (qset.questions || []).map(q => q.questionId));
+      
       const byId = new Map((qset.questions || []).map((q) => [q.questionId, q]));
+      console.log('Map keys:', Array.from(byId.keys()));
 
-      let total = 0;
-      let max = 0;
+      // Calculate max score from ALL questions in the set
+      let totalScore = 0;
+      let maxScore = 0;
+      
+      // First, calculate max score from ALL questions
+      (qset.questions || []).forEach((q) => {
+        const w = weights[q.difficultyLevel] || 1;
+        maxScore += 1 * w;
+      });
+      
+      // Then process user answers and calculate their score
       const userAnswers = (answers || []).map((a) => {
         const q = byId.get(a.questionId);
+        console.log(`Matching questionId ${a.questionId}:`, q ? 'FOUND' : 'NOT FOUND');
         if (!q)
           return {
             questionId: a.questionId,
@@ -128,21 +154,28 @@ module.exports = {
           };
         const w = weights[q.difficultyLevel] || 1;
         const correct = q.correctAnswerIndex === a.selectedOptionIndex;
-        if (correct) total += 1 * w;
-        max += 1 * w;
+        if (correct) totalScore += 1 * w;
         return {
           questionId: a.questionId,
           selectedOptionIndex: a.selectedOptionIndex,
           isCorrect: correct,
         };
       });
-      const score = max > 0 ? Math.round((total / max) * 100) : 0;
-      const end = new Date();
+      
+      console.log('Final userAnswers:', JSON.stringify(userAnswers, null, 2));
+      console.log('Score calculation: totalScore =', totalScore, ', maxScore =', maxScore);
+      
+      const score = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+      const end = (attempt.isTimed !== false) ? new Date() : null;
       const updated = await attemptsRepo.updateById(
         attemptId,
         { $set: { userAnswers, score, isCompleted: true, endTime: end } },
         { new: true }
       );
+
+      console.log('Updated attempt:', updated ? 'SUCCESS' : 'FAILED');
+      console.log('=== END DEBUG ===');
 
       // Emit real-time notification for quiz completion
       notificationService.emitQuizCompleted(user.id, {
@@ -155,6 +188,7 @@ module.exports = {
 
       return res.status(200).json({ id: String(updated._id || updated.id), ...updated });
     } catch (e) {
+      console.error('Quiz submit error:', e);
       next(e);
     }
   },

@@ -5,7 +5,7 @@ const authenticateJWT = require("../middleware/authenticateJWT");
 const { expensiveLimiter } = require("../config/rateLimits");
 const inputValidation = require("../middleware/inputValidation");
 const idempotencyKey = require("../middleware/idempotencyKey");
-const { checkQuestionGenerationLimit } = require("../middleware/checkEntitlement");
+const { checkQuestionGenerationLimit, checkCanShare } = require("../middleware/checkEntitlement");
 const { cacheResponse } = require("../middleware/cacheResponse");
 
 const router = express.Router();
@@ -42,7 +42,7 @@ router.post(
 router.get("/:id", authenticateJWT, cacheResponse({ ttl: 600 }), controller.get);
 router.patch("/:id", authenticateJWT, controller.update);
 router.delete("/:id", authenticateJWT, controller.remove);
-router.post("/:id/share", authenticateJWT, controller.share);
+router.post("/:id/share", authenticateJWT, checkCanShare, controller.share);
 router.post("/:id/unshare", authenticateJWT, controller.unshare);
 router.post("/:id/review", authenticateJWT, controller.requestReview);
 

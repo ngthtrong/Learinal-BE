@@ -1,13 +1,14 @@
-const UsersRepository = require('./users.repository');
-const SubjectsRepository = require('./subjects.repository');
-const DocumentsRepository = require('./documents.repository');
-const QuestionSetsRepository = require('./questionSets.repository');
-const QuizAttemptsRepository = require('./quizAttempts.repository');
-const ValidationRequestsRepository = require('./validationRequests.repository');
-const CommissionRecordsRepository = require('./commissionRecords.repository');
-const SubscriptionPlansRepository = require('./subscriptionPlans.repository');
-const UserSubscriptionsRepository = require('./userSubscriptions.repository');
-const NotificationsRepository = require('./notifications.repository');
+const UsersRepository = require("./users.repository");
+const SubjectsRepository = require("./subjects.repository");
+const DocumentsRepository = require("./documents.repository");
+const QuestionSetsRepository = require("./questionSets.repository");
+const QuizAttemptsRepository = require("./quizAttempts.repository");
+const ValidationRequestsRepository = require("./validationRequests.repository");
+const CommissionRecordsRepository = require("./commissionRecords.repository");
+const SubscriptionPlansRepository = require("./subscriptionPlans.repository");
+const UserSubscriptionsRepository = require("./userSubscriptions.repository");
+const NotificationsRepository = require("./notifications.repository");
+const UsageTrackingRepository = require("./usageTracking.repository");
 
 function createRepositories() {
   return {
@@ -21,6 +22,7 @@ function createRepositories() {
     subscriptionPlansRepository: new SubscriptionPlansRepository(),
     userSubscriptionsRepository: new UserSubscriptionsRepository(),
     notificationsRepository: new NotificationsRepository(),
+    usageTrackingRepository: new UsageTrackingRepository(),
   };
 }
 
@@ -35,5 +37,6 @@ module.exports = {
   SubscriptionPlansRepository,
   UserSubscriptionsRepository,
   NotificationsRepository,
+  UsageTrackingRepository,
   createRepositories,
 };
