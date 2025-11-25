@@ -15,8 +15,17 @@ const completeValidationSchema = Joi.object({
   }),
   body: Joi.object({
     decision: Joi.string().valid('Approved', 'Rejected').required(),
-    feedback: Joi.string().optional(),
-    correctedQuestions: Joi.array().optional(),
+    feedback: Joi.string().allow('', null).optional(),
+    correctedQuestions: Joi.array().items(Joi.object({
+      questionId: Joi.string().optional(),
+      questionText: Joi.string().required(),
+      options: Joi.array().items(Joi.string()).min(2).required(),
+      correctAnswerIndex: Joi.number().integer().min(0).required(),
+      explanation: Joi.string().allow('', null).optional(),
+      topicTags: Joi.array().items(Joi.string()).optional(),
+      topicId: Joi.string().optional(),
+      difficultyLevel: Joi.string().optional(),
+    }).unknown(true)).optional(),
   }),
 }).unknown(true);
 
