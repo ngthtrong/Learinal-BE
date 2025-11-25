@@ -1,3 +1,4 @@
+const { Types } = require("mongoose");
 const ValidationRequestsRepository = require("../repositories/validationRequests.repository");
 const QuestionSetsRepository = require("../repositories/questionSets.repository");
 const UsersRepository = require("../repositories/users.repository");
@@ -25,30 +26,31 @@ module.exports = {
       // Build filter depending on role & desired visibility
       const status = (req.query.status || '').trim();
       const setId = (req.query.setId || '').trim();
+      const setIdFilter = setId && Types.ObjectId.isValid(setId) ? new Types.ObjectId(setId) : null;
       let filter;
       if (user.role === 'Learner') {
         filter = { learnerId: user.id };
         if (status) filter.status = status;
-        if (setId) filter.setId = setId;
+        if (setIdFilter) filter.setId = setIdFilter;
       } else if (user.role === 'Expert') {
         // Show assigned to this expert OR unassigned (PendingAssignment) unless a specific status is requested
         if (status) {
           if (status === 'PendingAssignment') {
             filter = { status: 'PendingAssignment' };
-            if (setId) filter.setId = setId;
+            if (setIdFilter) filter.setId = setIdFilter;
           } else {
             filter = { expertId: user.id, status };
-            if (setId) filter.setId = setId;
+            if (setIdFilter) filter.setId = setIdFilter;
           }
         } else {
           filter = { $or: [ { expertId: user.id }, { status: 'PendingAssignment' } ] };
-          if (setId) filter.setId = setId; // narrow both arms by setId using $and-like pattern (handled below)
+          if (setIdFilter) filter.setId = setIdFilter; // narrow both arms by setId using $and-like pattern (handled below)
         }
       } else {
         // Admin sees all (optionally filtered by status)
         filter = {};
         if (status) filter.status = status;
-        if (setId) filter.setId = setId;
+        if (setIdFilter) filter.setId = setIdFilter;
       }
 
       // If setId provided with $or filter, convert to $and to ensure both branches constrained
@@ -59,10 +61,16 @@ module.exports = {
         filter = { $and: [ { $or: or }, setConstraint ] };
       }
 
+      // Debug logging
+      console.log('[ValidationRequests.list] setId param:', setId, 'converted to ObjectId:', setIdFilter);
+      console.log('[ValidationRequests.list] Final filter:', JSON.stringify(filter, null, 2));
+
       const { items, totalItems, totalPages } = await repo.paginate(
         filter,
         { page, pageSize, sort: { createdAt: -1 } }
       );
+
+      console.log('[ValidationRequests.list] Found', items.length, 'items. SetIds:', items.map(i => String(i.setId)));
 
       let enriched = items || [];
       // Attach question set title, learner name, expert name
