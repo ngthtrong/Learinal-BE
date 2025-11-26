@@ -205,26 +205,27 @@ module.exports = {
 
       const isOwner = String(item.userId) === String(user.id);
       const isPubliclyShared = item.isShared === true;
+      const isExpertPublic = item.status === "Public"; // Expert's public set
 
       // Allow access if user is owner
       if (isOwner) {
         return res.status(200).json(mapId(item));
       }
 
-      // If not owner and not shared, deny access
-      if (!isPubliclyShared) {
+      // If not owner and not shared AND not expert's public set, deny access
+      if (!isPubliclyShared && !isExpertPublic) {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       }
 
       // If question set is Public (created by expert), check Premium subscription
-      if (item.status === "Public" && !isOwner) {
+      if (isExpertPublic && !isOwner) {
         const ownerUser = await usersRepo.findById(item.userId);
         if (ownerUser && ownerUser.role === "Expert") {
           // Check if current user has Premium subscription
-          const { subscriptionRepository } = req.app.locals;
-          const hasPremium = await subscriptionRepository.hasActiveSubscription(user.id);
+          const { userSubscriptionsService } = req.app.locals;
+          const activeSubscription = await userSubscriptionsService.getActiveSubscription(user.id);
           
-          if (!hasPremium) {
+          if (!activeSubscription) {
             // Allow viewing but restrict quiz access
             return res.status(200).json({
               ...mapId(item),
