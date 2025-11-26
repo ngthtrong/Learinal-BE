@@ -12,6 +12,7 @@ const questionsHandler = require("./jobs/questions.generate");
 const emailHandler = require("./jobs/email.send");
 const subscriptionExpirationHandler = require("./jobs/subscription.expiration");
 const subscriptionRenewalReminderHandler = require("./jobs/subscription.renewal-reminder");
+const commissionHandler = require("./jobs/commission.calculate");
 const logger = require("./utils/logger");
 
 const connection = getIORedis();
@@ -45,9 +46,10 @@ async function startWorkers() {
     startWorker("contentSummary", summaryHandler);
     startWorker("questionsGenerate", questionsHandler);
     startWorker("emailNotifications", emailHandler);
+    startWorker("commissionCalculate", commissionHandler.calculateCommissionForAttempt);
 
     logger.info(
-      "Workers started for queues: documentsIngestion, contentSummary, questionsGenerate, emailNotifications"
+      "Workers started for queues: documentsIngestion, contentSummary, questionsGenerate, emailNotifications, commissionCalculate"
     );
 
     // Schedule cron jobs
@@ -98,8 +100,23 @@ async function startWorkers() {
       }
     });
 
+    // Monthly commission reconciliation - runs on 1st of each month at 3 AM (0 3 1 * *)
+    // Calculates revenue bonuses for the previous month
+    cron.schedule("0 3 1 * *", async () => {
+      try {
+        logger.info("[Cron] Running monthly commission reconciliation");
+        const result = await commissionHandler.reconcileMonthlyCommissions();
+        logger.info(
+          { result },
+          "[Cron] Monthly commission reconciliation completed"
+        );
+      } catch (error) {
+        logger.error({ error }, "[Cron] Monthly commission reconciliation failed");
+      }
+    });
+
     logger.info(
-      "Cron jobs scheduled: subscription expiration (daily at midnight), renewal reminders (daily at 9 AM), usage tracking cleanup (daily at 2 AM)"
+      "Cron jobs scheduled: subscription expiration (daily at midnight), renewal reminders (daily at 9 AM), usage tracking cleanup (daily at 2 AM), commission reconciliation (monthly on 1st at 3 AM)"
     );
   } catch (err) {
     logger.error({ err }, "Failed to start workers");

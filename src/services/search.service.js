@@ -162,9 +162,18 @@ class SearchService {
       query.creatorId = filters.creatorId;
     }
 
-    // Shared filter
+    // Shared filter - include both isShared=true AND expert's Public status
     if (filters.isShared !== undefined) {
-      query.isShared = filters.isShared === "true" || filters.isShared === true;
+      const isShared = filters.isShared === "true" || filters.isShared === true;
+      if (isShared) {
+        // Include both traditional shared sets AND expert's Public status sets
+        query.$or = [
+          { isShared: true },
+          { status: "Public" } // Expert's public sets
+        ];
+      } else {
+        query.isShared = false;
+      }
     }
 
     const [results, total] = await Promise.all([
@@ -172,7 +181,7 @@ class SearchService {
         .skip(skip)
         .limit(pageSize)
         .sort({ createdAt: -1 })
-        .populate("userId", "fullName")
+        .populate("userId", "fullName role")
         .populate("subjectId", "subjectName")
         .lean(),
       QuestionSet.countDocuments(query),
@@ -188,6 +197,7 @@ class SearchService {
         isShared: set.isShared,
         questionCount: set.questions?.length || 0,
         creatorName: set.userId?.fullName || "Ẩn danh",
+        creatorRole: set.userId?.role || "Learner",
         subject: set.subjectId
           ? {
               id: set.subjectId._id?.toString() || set.subjectId.toString(),
