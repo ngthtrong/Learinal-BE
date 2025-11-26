@@ -194,6 +194,26 @@ class NotificationService {
   }
 
   /**
+   * Emit revision requested notification to expert
+   * @param {string} expertId - ID of expert who needs to review again
+   * @param {Object} revisionData - Revision request data
+   */
+  emitRevisionRequested(expertId, revisionData) {
+    const io = this._getIO();
+    if (!io) return;
+
+    io.to(`user:${expertId}`).emit("validation.revisionRequested", {
+      type: "validation.revisionRequested",
+      data: {
+        requestId: revisionData.requestId,
+        setId: revisionData.setId,
+        learnerResponse: revisionData.learnerResponse,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
    * Emit commission earned notification to expert
    * @param {string} expertId - ID of expert
    * @param {Object} commission - Commission record

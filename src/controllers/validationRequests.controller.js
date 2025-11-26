@@ -223,10 +223,10 @@ module.exports = {
         });
       }
 
-      if (request.status !== "Assigned") {
+      if (request.status !== "Assigned" && request.status !== "RevisionRequested") {
         return res.status(400).json({
           code: "InvalidState",
-          message: "Validation request is not in Assigned state",
+          message: "Validation request is not in Assigned or RevisionRequested state",
         });
       }
 
@@ -288,6 +288,67 @@ module.exports = {
         status: updateData.status,
         decision,
         completionTime: updateData.completionTime,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // PATCH /validation-requests/:id/request-revision
+  // Learner requests revision after expert completed review
+  requestRevision: async (req, res, next) => {
+    try {
+      const { id: requestId } = req.params;
+      const { learnerResponse } = req.body;
+      const learnerId = req.user.id;
+
+      // 1. Validate request ownership
+      const request = await repo.findById(requestId);
+
+      if (!request || request.learnerId?.toString() !== learnerId) {
+        return res.status(404).json({
+          code: "NotFound",
+          message: "Validation request not found",
+        });
+      }
+
+      if (request.status !== "Completed") {
+        return res.status(400).json({
+          code: "InvalidState",
+          message: "Can only request revision for completed validation",
+        });
+      }
+
+      // 2. Update validation request to RevisionRequested
+      const updateData = {
+        status: "RevisionRequested",
+        learnerResponse,
+        revisionRequestTime: new Date(),
+      };
+
+      await repo.updateById(requestId, updateData);
+
+      // 3. Update question set status back to PendingValidation
+      await questionSetsRepo.updateById(request.setId.toString(), {
+        status: "PendingValidation",
+      });
+
+      // 4. Notify expert about revision request
+      if (request.expertId) {
+        notificationService.emitRevisionRequested(
+          request.expertId.toString(),
+          {
+            requestId,
+            setId: request.setId.toString(),
+            learnerResponse,
+          }
+        );
+      }
+
+      res.status(200).json({
+        id: requestId,
+        status: "RevisionRequested",
+        revisionRequestTime: updateData.revisionRequestTime,
       });
     } catch (e) {
       next(e);
