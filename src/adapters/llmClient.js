@@ -11,7 +11,7 @@ class LLMClient {
   }
 
   get endpoint() {
-    const model = this.config.model || "gemini-1.5-flash";
+    const model = this.config.model || "gemini-2.5-flash";
     const base = "https://generativelanguage.googleapis.com/v1";
     const path = model.startsWith("models/")
       ? `${model}:generateContent`
@@ -48,7 +48,7 @@ class LLMClient {
   async generateQuestions(input) {
     const { 
       contextText = "", 
-      _numQuestions = 10, 
+      numQuestions = 10, 
       difficulty = "Understand", 
       topics = [],
       difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }
@@ -70,6 +70,9 @@ class LLMClient {
     let distributionInstructions = "";
     let topicInstructions = "";
     
+    // Calculate total questions from distribution or use numQuestions
+    let totalQuestionsToGenerate = numQuestions;
+    
     // Handle difficulty distribution
     if (difficultyDistribution && typeof difficultyDistribution === 'object') {
       const distribParts = [];
@@ -81,7 +84,8 @@ class LLMClient {
         }
       }
       if (distribParts.length > 0 && totalDist > 0) {
-        distributionInstructions = `\nPhân bố độ khó: ${distribParts.join(", ")}. Tổng cộng ${totalDist} câu hỏi.`;
+        totalQuestionsToGenerate = totalDist;
+        distributionInstructions = `\nPhân bố độ khó: ${distribParts.join(", ")}. Tổng cộng CHÍNH XÁC ${totalDist} câu hỏi.`;
       }
     }
     
@@ -106,10 +110,18 @@ class LLMClient {
       }
     }
 
+    // Build the quantity instruction
+    const quantityInstruction = distributionInstructions 
+      ? distributionInstructions 
+      : `\n**QUAN TRỌNG: Tạo CHÍNH XÁC ${totalQuestionsToGenerate} câu hỏi. Không nhiều hơn, không ít hơn.**`;
+
     const prompt = `You are a learning assistant. Using ONLY the information from the provided context, generate multiple-choice questions (MCQs). Do not invent facts beyond the context.
+
+**CRITICAL REQUIREMENT: You MUST generate EXACTLY ${totalQuestionsToGenerate} questions. Not more, not less.**
+
 Context (may be empty):\n${safeContext}\n
 Topics (optional): ${topics.join(", ")}
-${topicInstructions}${distributionInstructions}
+${topicInstructions}${quantityInstruction}
 
 Return ONLY valid JSON (no markdown fences, no extra text) with shape: 
 { 
@@ -133,7 +145,9 @@ Difficulty levels explained:
 - "Analyze": Break down and examine components, relationships (Bloom's Taxonomy Level 4)
 
 ${distributionInstructions ? 'Follow the difficulty distribution specified above exactly.' : `Ensure difficultyLevel is set to "${difficulty}" for all questions unless the context strongly suggests otherwise.`}
-${topicDistribution ? 'Follow the topic distribution specified above exactly.' : ''}`;
+${topicDistribution ? 'Follow the topic distribution specified above exactly.' : ''}
+
+**REMINDER: The questions array MUST contain EXACTLY ${totalQuestionsToGenerate} question objects.**`;
 
     if (String(process.env.LLM_DEBUG).toLowerCase() === "true" || process.env.LLM_DEBUG === "1") {
       // Log a trimmed prompt for debugging
