@@ -5,7 +5,7 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const mongoConfig = require("../src/config/mongo");
+const env = require("../src/config/env");
 const EmailTemplate = require("../src/models/emailTemplate.model");
 
 const templates = [
@@ -110,34 +110,207 @@ const templates = [
     name: "Payment Successful",
     subject: "Thanh toán thành công - Payment Successful",
     category: "Subscription",
-    variables: ["userName", "planName", "amount", "transactionId", "renewalDate"],
+    variables: ["user_name", "plan_name", "amount", "transaction_id", "renewal_date"],
     bodyHtml: `
-      <h1>Thanh toán thành công!</h1>
-      <p>Xin chào {{userName}},</p>
-      <p>Chúng tôi đã nhận được thanh toán của bạn thành công.</p>
-      <h2>Thông tin thanh toán:</h2>
-      <ul>
-        <li><strong>Gói dịch vụ:</strong> {{planName}}</li>
-        <li><strong>Số tiền:</strong> {{amount}} VND</li>
-        <li><strong>Mã giao dịch:</strong> {{transactionId}}</li>
-        <li><strong>Ngày gia hạn:</strong> {{renewalDate}}</li>
-      </ul>
-      <p>Tài khoản của bạn đã được kích hoạt và bạn có thể bắt đầu sử dụng các tính năng premium ngay bây giờ!</p>
-      <hr>
-      <h1>Payment Successful!</h1>
-      <p>Hello {{userName}},</p>
-      <p>We have successfully received your payment.</p>
-      <h2>Payment Details:</h2>
-      <ul>
-        <li><strong>Plan:</strong> {{planName}}</li>
-        <li><strong>Amount:</strong> {{amount}} VND</li>
-        <li><strong>Transaction ID:</strong> {{transactionId}}</li>
-        <li><strong>Renewal Date:</strong> {{renewalDate}}</li>
-      </ul>
-      <p>Your account has been activated and you can start using premium features right now!</p>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fb;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="width: 100%; max-width: 500px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header with Logo -->
+          <tr>
+            <td style="padding: 30px 40px 20px;">
+              <table role="presentation" style="width: 100%;">
+                <tr>
+                  <td>
+                    <img src="https://learinal.app/logo.png" alt="Learinal" style="height: 32px; width: auto;" />
+                    <span style="margin-left: 8px; font-size: 18px; font-weight: 600; color: #4F46E5; vertical-align: middle;">Learinal</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 0 40px 30px;">
+              <h1 style="margin: 0 0 8px; font-size: 24px; font-weight: 600; color: #1a1a2e;">Thanh toán thành công</h1>
+              <p style="margin: 0 0 20px; font-size: 14px; color: #6b7280;">Xin chào {{user_name}},</p>
+              
+              <p style="margin: 0 0 24px; font-size: 14px; color: #374151; line-height: 1.6;">
+                Chúng tôi đã nhận được thanh toán của bạn thành công. Cảm ơn bạn đã tin tưởng sử dụng dịch vụ Learinal!
+              </p>
+              
+              <!-- Payment Details Box -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f0fdf4; border-radius: 8px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table role="presentation" style="width: 100%;">
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Gói dịch vụ</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{plan_name}}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Số tiền</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #22c55e;">{{amount}} VND</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Mã giao dịch</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{transaction_id}}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0;">
+                          <span style="font-size: 13px; color: #6b7280;">Ngày gia hạn</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{renewal_date}}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.6;">
+                Gói dịch vụ của bạn đã được kích hoạt. Chúc bạn học tập hiệu quả!
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+                © Learinal. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
     `,
     bodyText:
-      "Thanh toán thành công! Gói: {{planName}}, Số tiền: {{amount}} VND, Mã GD: {{transactionId}}. Payment successful! Plan: {{planName}}, Amount: {{amount}} VND, Transaction: {{transactionId}}.",
+      "Thanh toán thành công! Xin chào {{user_name}}, chúng tôi đã nhận được thanh toán của bạn. Gói: {{plan_name}}, Số tiền: {{amount}} VND, Mã GD: {{transaction_id}}, Gia hạn: {{renewal_date}}.",
+    isActive: true,
+  },
+  {
+    templateId: "addonPurchaseSuccess",
+    name: "Addon Purchase Successful",
+    subject: "Mua gói bổ sung thành công - Addon Purchase Successful",
+    category: "Subscription",
+    variables: ["user_name", "package_name", "amount", "transaction_id", "test_generations", "validation_requests", "purchase_date"],
+    bodyHtml: `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fb;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="width: 100%; max-width: 500px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header with Logo -->
+          <tr>
+            <td style="padding: 30px 40px 20px;">
+              <table role="presentation" style="width: 100%;">
+                <tr>
+                  <td>
+                    <img src="https://learinal.app/logo.png" alt="Learinal" style="height: 32px; width: auto;" />
+                    <span style="margin-left: 8px; font-size: 18px; font-weight: 600; color: #4F46E5; vertical-align: middle;">Learinal</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 0 40px 30px;">
+              <h1 style="margin: 0 0 8px; font-size: 24px; font-weight: 600; color: #1a1a2e;">Mua gói bổ sung thành công</h1>
+              <p style="margin: 0 0 20px; font-size: 14px; color: #6b7280;">Xin chào {{user_name}},</p>
+              
+              <p style="margin: 0 0 24px; font-size: 14px; color: #374151; line-height: 1.6;">
+                Chúng tôi đã nhận được thanh toán của bạn thành công. Gói bổ sung đã được kích hoạt!
+              </p>
+              
+              <!-- Purchase Details Box -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f0fdf4; border-radius: 8px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table role="presentation" style="width: 100%;">
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Gói</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{package_name}}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Số tiền</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{amount}} VND</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Lượt tạo đề</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #22c55e;">+{{test_generations}} lượt</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #dcfce7;">
+                          <span style="font-size: 13px; color: #6b7280;">Lượt xác thực</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #22c55e;">+{{validation_requests}} lượt</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0;">
+                          <span style="font-size: 13px; color: #6b7280;">Mã giao dịch</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{transaction_id}}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.6;">
+                Bạn có thể sử dụng ngay các lượt bổ sung này. Chúc bạn học tập hiệu quả!
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+                © Learinal. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `,
+    bodyText:
+      "Mua gói bổ sung thành công! Xin chào {{user_name}}, gói {{package_name}} đã được kích hoạt. Bạn nhận được +{{test_generations}} lượt tạo đề và +{{validation_requests}} lượt xác thực. Mã GD: {{transaction_id}}.",
     isActive: true,
   },
 ];
@@ -145,7 +318,7 @@ const templates = [
 async function seed() {
   try {
     console.log("Connecting to MongoDB...");
-    await mongoose.connect(mongoConfig.uri, mongoConfig.options);
+    await mongoose.connect(env.mongoUri, { dbName: env.mongoDbName });
     console.log("Connected to MongoDB");
 
     console.log("Clearing existing email templates...");

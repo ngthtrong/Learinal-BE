@@ -155,13 +155,31 @@ module.exports = {
       const created = await repo.create(toCreate);
 
       // Track usage for subscription limit enforcement
-      const { usageTrackingRepository } = req.app.locals;
+      const { usageTrackingRepository, addonPackagesService } = req.app.locals;
       await usageTrackingRepository.trackAction(
         user.id,
         "question_set_generation",
         created._id.toString(),
         { subjectId, numQuestions: totalQuestions, difficulty }
       );
+
+      // Consume addon quota if using addon (subscription quota already exceeded)
+      if (req.useAddonQuota && addonPackagesService) {
+        const logger = require("../utils/logger");
+        try {
+          await addonPackagesService.tryConsumeAddonQuota(user.id, "question_set_generation");
+          logger.info(
+            { userId: user.id, questionSetId: created._id.toString() },
+            "[controller] Addon quota consumed for question generation"
+          );
+        } catch (addonError) {
+          logger.error(
+            { userId: user.id, error: addonError.message },
+            "[controller] Failed to consume addon quota"
+          );
+          // Don't fail the request if addon consumption fails
+        }
+      }
 
       // Enqueue question generation job
       const { enqueueQuestionsGenerate } = require("../adapters/queue");
@@ -369,13 +387,31 @@ module.exports = {
       });
 
       // Track usage for subscription limit enforcement
-      const { usageTrackingRepository } = req.app.locals;
+      const { usageTrackingRepository, addonPackagesService } = req.app.locals;
       await usageTrackingRepository.trackAction(
         userId,
         "validation_request",
         validationRequest._id.toString(),
         { setId }
       );
+
+      // Consume addon quota if using addon (subscription quota already exceeded)
+      if (req.useAddonQuota && addonPackagesService) {
+        const logger = require("../utils/logger");
+        try {
+          await addonPackagesService.tryConsumeAddonQuota(userId, "validation_request");
+          logger.info(
+            { userId, validationRequestId: validationRequest._id.toString() },
+            "[controller] Addon quota consumed for validation request"
+          );
+        } catch (addonError) {
+          logger.error(
+            { userId, error: addonError.message },
+            "[controller] Failed to consume addon quota for validation"
+          );
+          // Don't fail the request if addon consumption fails
+        }
+      }
 
       // 4. Enqueue assignment job
       const { enqueueEmail } = require("../adapters/queue");

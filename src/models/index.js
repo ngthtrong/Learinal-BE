@@ -12,4 +12,7 @@ module.exports = {
   RefreshToken: require("./refreshToken.model"),
   PasswordResetToken: require("./passwordResetToken.model"),
   UsageTracking: require("./usageTracking.model"),
+  AddonPackage: require("./addonPackage.model"),
+  UserAddonPurchase: require("./userAddonPurchase.model"),
+  ProcessedTransaction: require("./processedTransaction.model"),
 };

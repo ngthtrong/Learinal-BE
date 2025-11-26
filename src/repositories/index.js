@@ -9,6 +9,8 @@ const SubscriptionPlansRepository = require("./subscriptionPlans.repository");
 const UserSubscriptionsRepository = require("./userSubscriptions.repository");
 const NotificationsRepository = require("./notifications.repository");
 const UsageTrackingRepository = require("./usageTracking.repository");
+const AddonPackagesRepository = require("./addonPackages.repository");
+const UserAddonPurchasesRepository = require("./userAddonPurchases.repository");
 
 function createRepositories() {
   return {
@@ -23,6 +25,8 @@ function createRepositories() {
     userSubscriptionsRepository: new UserSubscriptionsRepository(),
     notificationsRepository: new NotificationsRepository(),
     usageTrackingRepository: new UsageTrackingRepository(),
+    addonPackagesRepository: new AddonPackagesRepository(),
+    userAddonPurchasesRepository: new UserAddonPurchasesRepository(),
   };
 }
 
@@ -38,5 +42,7 @@ module.exports = {
   UserSubscriptionsRepository,
   NotificationsRepository,
   UsageTrackingRepository,
+  AddonPackagesRepository,
+  UserAddonPurchasesRepository,
   createRepositories,
 };
