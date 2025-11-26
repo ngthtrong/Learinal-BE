@@ -1,17 +1,29 @@
 const QuestionSetsRepository = require("../repositories/questionSets.repository");
 const DocumentsRepository = require("../repositories/documents.repository");
 const SubjectsRepository = require("../repositories/subjects.repository");
+const UsersRepository = require("../repositories/users.repository");
 const { env, llm } = require("../config");
 const LLMClient = require("../adapters/llmClient");
 
 const repo = new QuestionSetsRepository();
 const docRepo = new DocumentsRepository();
 const subjectRepo = new SubjectsRepository();
+const usersRepo = new UsersRepository();
 
 function mapId(doc) {
   if (!doc) return doc;
   const { _id, __v, ...rest } = doc;
   return { id: String(_id || rest.id), ...rest };
+}
+
+// Helper: Map Easy/Medium/Hard to Remember/Understand/Apply/Analyze
+function mapDifficultyLevel(level) {
+  const mapping = {
+    Easy: "Remember",
+    Medium: "Understand",
+    Hard: "Apply",
+  };
+  return mapping[level] || level || "Understand";
 }
 
 module.exports = {
@@ -191,14 +203,37 @@ module.exports = {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       }
 
-      // Allow access if:
-      // 1. User is the owner, OR
-      // 2. Question set is shared publicly
       const isOwner = String(item.userId) === String(user.id);
       const isPubliclyShared = item.isShared === true;
+      const isExpertPublic = item.status === "Public"; // Expert's public set
 
-      if (!isOwner && !isPubliclyShared) {
+      // Allow access if user is owner
+      if (isOwner) {
+        return res.status(200).json(mapId(item));
+      }
+
+      // If not owner and not shared AND not expert's public set, deny access
+      if (!isPubliclyShared && !isExpertPublic) {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
+      }
+
+      // If question set is Public (created by expert), check Premium subscription
+      if (isExpertPublic && !isOwner) {
+        const ownerUser = await usersRepo.findById(item.userId);
+        if (ownerUser && ownerUser.role === "Expert") {
+          // Check if current user has Premium subscription
+          const { userSubscriptionsService } = req.app.locals;
+          const activeSubscription = await userSubscriptionsService.getActiveSubscription(user.id);
+          
+          if (!activeSubscription) {
+            // Allow viewing but restrict quiz access
+            return res.status(200).json({
+              ...mapId(item),
+              _premiumRequired: true,
+              _message: "Bạn cần nâng cấp lên gói Premium để làm bài tập này"
+            });
+          }
+        }
       }
 
       res.status(200).json(mapId(item));
@@ -358,6 +393,149 @@ module.exports = {
         status: "PendingAssignment",
         requestTime: validationRequest.requestTime,
         message: "Validation request submitted. An expert will be assigned shortly.",
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // POST /question-sets/create - Create question set manually (for Expert or Learner)
+  createManual: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const { title, description, questions, subjectId } = req.body;
+
+      if (!title || !questions || !Array.isArray(questions) || questions.length === 0) {
+        return res.status(400).json({
+          code: "ValidationError",
+          message: "title and questions array are required",
+        });
+      }
+
+      // Validate questions format
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        if (!q.questionText || !q.options || q.options.length < 2) {
+          return res.status(400).json({
+            code: "ValidationError",
+            message: `Question ${i + 1}: must have questionText and at least 2 options`,
+          });
+        }
+        if (q.correctAnswerIndex === undefined || q.correctAnswerIndex < 0 || q.correctAnswerIndex >= q.options.length) {
+          return res.status(400).json({
+            code: "ValidationError",
+            message: `Question ${i + 1}: correctAnswerIndex is invalid`,
+          });
+        }
+      }
+
+      // Generate questionId for each question and map difficulty
+      const processedQuestions = questions.map((q, idx) => ({
+        ...q,
+        questionId: q.questionId || `q_${Date.now()}_${idx}`,
+        difficultyLevel: mapDifficultyLevel(q.difficultyLevel),
+      }));
+
+      const toCreate = {
+        userId: user.id,
+        title,
+        description: description || undefined,
+        subjectId: subjectId || undefined,
+        status: "Draft",
+        isShared: false,
+        questions: processedQuestions,
+        questionCount: processedQuestions.length,
+      };
+
+      const created = await repo.create(toCreate);
+
+      return res.status(201).json(mapId(created));
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // POST /question-sets/generate-from-document - Generate from uploaded document
+  generateFromDocument: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const {
+        documentId,
+        title,
+        description,
+        numQuestions = 10,
+        difficulty = "Medium",
+        questionType = "multiple-choice",
+      } = req.body;
+
+      if (!documentId || !title) {
+        return res.status(400).json({
+          code: "ValidationError",
+          message: "documentId and title are required",
+        });
+      }
+
+      // Verify document exists and belongs to user
+      const document = await docRepo.findById(documentId);
+      if (!document || String(document.userId) !== String(user.id)) {
+        return res.status(404).json({
+          code: "NotFound",
+          message: "Document not found or access denied",
+        });
+      }
+
+      if (document.ingestionStatus !== "Completed") {
+        return res.status(400).json({
+          code: "InvalidState",
+          message: "Document ingestion not completed",
+        });
+      }
+
+      // Enforce real generation: require LLM configured
+      const isReal =
+        (process.env.LLM_MODE || env.llmMode) === "real" && llm.apiKey && llm.apiKey.length > 0;
+      if (!isReal) {
+        return res.status(503).json({
+          code: "ServiceUnavailable",
+          message: "LLM not configured. Set LLM_MODE=real and provide GEMINI_API_KEY.",
+        });
+      }
+
+      // Create question set with Processing status
+      const toCreate = {
+        userId: user.id,
+        title,
+        description: description || undefined,
+        documentId,
+        status: "Processing",
+        isShared: false,
+        questions: [],
+      };
+      const created = await repo.create(toCreate);
+
+      // Enqueue question generation from document
+      const { enqueueQuestionsGenerateFromDocument } = require("../adapters/queue");
+      const logger = require("../utils/logger");
+
+      const jobPayload = {
+        questionSetId: created._id.toString(),
+        userId: String(user.id),
+        documentId: String(documentId),
+        numQuestions,
+        difficulty,
+        questionType,
+      };
+
+      logger.info({ jobPayload }, "[controller] enqueueing question generation from document");
+      await enqueueQuestionsGenerateFromDocument(jobPayload);
+      logger.info(
+        { questionSetId: created._id.toString() },
+        "[controller] question generation from document enqueued"
+      );
+
+      return res.status(202).json({
+        ...mapId(created),
+        message: "Question set generation started. You will receive a notification when completed.",
       });
     } catch (e) {
       next(e);

@@ -2,7 +2,7 @@ const { Schema, model, Types } = require("mongoose");
 
 const QuestionSchema = new Schema(
   {
-    questionId: { type: String, required: true },
+    questionId: { type: String, required: false },
     questionText: { type: String, required: true },
     options: { type: [String], required: true },
     correctAnswerIndex: { type: Number, required: true },
@@ -21,7 +21,7 @@ const QuestionSchema = new Schema(
 const QuestionSetSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: "User", required: true },
-    subjectId: { type: Types.ObjectId, ref: "Subject", required: true },
+    subjectId: { type: Types.ObjectId, ref: "Subject", required: false },
     title: { type: String, required: true },
     status: {
       type: String,

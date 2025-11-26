@@ -46,6 +46,14 @@ async function enqueueQuestionsGenerate(payload) {
   logger.info({ questionSetId: payload.questionSetId }, 'Question generation enqueued successfully');
 }
 
+async function enqueueQuestionsGenerateFromDocument(payload) {
+  ensureQueues();
+  if (!queues.questionsGenerate) throw new Error('Queue not available (missing REDIS_URL)');
+  logger.info({ payload }, 'Enqueuing question generation from document');
+  await queues.questionsGenerate.add('generateFromDocument', payload, { attempts: 3, backoff: { type: 'exponential', delay: 500 } });
+  logger.info({ questionSetId: payload.questionSetId }, 'Question generation from document enqueued successfully');
+}
+
 async function enqueueEmail(payload) {
   ensureQueues();
   if (!queues.emailNotifications) {
@@ -65,5 +73,6 @@ module.exports = {
   enqueueDocumentIngestion,
   enqueueContentSummary,
   enqueueQuestionsGenerate,
+  enqueueQuestionsGenerateFromDocument,
   enqueueEmail,
 };
