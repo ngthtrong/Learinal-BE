@@ -5,7 +5,7 @@ const authenticateJWT = require("../middleware/authenticateJWT");
 const { expensiveLimiter } = require("../config/rateLimits");
 const inputValidation = require("../middleware/inputValidation");
 const idempotencyKey = require("../middleware/idempotencyKey");
-const { checkQuestionGenerationLimit, checkCanShare } = require("../middleware/checkEntitlement");
+const { checkQuestionGenerationLimit, checkCanShare, checkValidationRequestLimit } = require("../middleware/checkEntitlement");
 const { cacheResponse } = require("../middleware/cacheResponse");
 
 const router = express.Router();
@@ -44,7 +44,7 @@ router.patch("/:id", authenticateJWT, controller.update);
 router.delete("/:id", authenticateJWT, controller.remove);
 router.post("/:id/share", authenticateJWT, checkCanShare, controller.share);
 router.post("/:id/unshare", authenticateJWT, controller.unshare);
-router.post("/:id/review", authenticateJWT, controller.requestReview);
+router.post("/:id/review", authenticateJWT, checkValidationRequestLimit, controller.requestReview);
 
 // GET /question-sets/:questionSetId/quiz-attempts - Get all quiz attempts for a question set
 router.get(

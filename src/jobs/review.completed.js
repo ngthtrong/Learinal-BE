@@ -48,19 +48,9 @@ module.exports = async function reviewCompleted(payload) {
       logger.info({ learnerEmail: learner.email }, 'Notification email sent to learner');
     }
 
-    // 4. If approved, create commission record (placeholder - actual calculation in separate job)
-    if (decision === 'Approved') {
-      await commissionsRepo.create({
-        expertId,
-        validationRequestId,
-        setId,
-        status: 'Pending',
-        amount: 0, // Will be calculated by commission calculation job
-        calculatedAt: new Date(),
-      });
-
-      logger.info({ expertId, validationRequestId }, 'Commission record created');
-    }
+    // 4. Commission records will be created when learners complete quiz attempts
+    // Not at validation approval time
+    logger.info({ expertId, validationRequestId, decision }, 'Validation completed, commission will be tracked on quiz attempts');
 
     logger.info({ validationRequestId }, 'Review completion processed successfully');
   } catch (error) {

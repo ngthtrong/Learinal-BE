@@ -1,6 +1,7 @@
 const QuizAttemptsRepository = require("../repositories/quizAttempts.repository");
 const QuestionSetsRepository = require("../repositories/questionSets.repository");
 const notificationService = require("../services/notification.service");
+const { addJob } = require("../adapters/queue");
 
 const attemptsRepo = new QuizAttemptsRepository();
 const qsetRepo = new QuestionSetsRepository();
@@ -185,6 +186,15 @@ module.exports = {
         totalQuestions: (qset.questions || []).length,
         completedAt: end,
       });
+
+      // Trigger commission calculation job (Hybrid Model)
+      // This will calculate fixed commission immediately, bonus in monthly reconciliation
+      try {
+        await addJob("commissionCalculate", { attemptId: String(updated._id || updated.id) });
+      } catch (commissionError) {
+        // Log but don't fail the quiz submission if commission job fails to queue
+        console.error('Failed to queue commission calculation:', commissionError);
+      }
 
       return res.status(200).json({ id: String(updated._id || updated.id), ...updated });
     } catch (e) {

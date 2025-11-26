@@ -83,6 +83,8 @@ class BaseRepository {
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     return {
       items,
+      totalItems,
+      totalPages,
       meta: { page, pageSize, totalItems, totalPages },
     };
   }
