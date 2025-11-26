@@ -136,32 +136,41 @@ class SepayScanService {
         });
 
         // Send payment success email to learner
+        // Supports both SendGrid Dynamic Template and database template fallback
         try {
-          if (emailCfg.paymentSuccessTemplateId) {
-            await enqueueEmail({
-              to: curr.email,
-              subject: "Thanh toán thành công - Payment Successful",
-              templateId: emailCfg.paymentSuccessTemplateId,
-              variables: {
-                user_name: curr.fullName,
-                plan_name: plan.planName,
-                amount: amountIn.toLocaleString("vi-VN"),
-                transaction_id: tx.id || tx.reference_number || "N/A",
-                renewal_date: renewalDate.toLocaleDateString("vi-VN", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                }),
-                billing_cycle: plan.billingCycle,
-              },
-            });
-            logger.info(
-              { userId, email: curr.email, planName: plan.planName },
-              "Payment success email enqueued"
-            );
-          } else {
-            logger.warn({ userId }, "Payment success template ID not configured, skipping email");
-          }
+          const emailVariables = {
+            user_name: curr.fullName,
+            plan_name: plan.planName,
+            amount: amountIn.toLocaleString("vi-VN"),
+            transaction_id: tx.id || tx.reference_number || "N/A",
+            renewal_date: renewalDate.toLocaleDateString("vi-VN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+            billing_cycle: plan.billingCycle,
+          };
+
+          await enqueueEmail({
+            to: curr.email,
+            subject: "Thanh toán thành công - Payment Successful",
+            // Use SendGrid template if configured, otherwise fallback to database template
+            templateId: emailCfg.paymentSuccessTemplateId || null,
+            variables: emailVariables,
+            options: {
+              // Database template ID for fallback
+              dbTemplateId: "paymentSuccess",
+            },
+          });
+          logger.info(
+            { 
+              userId, 
+              email: curr.email, 
+              planName: plan.planName,
+              usingSendGridTemplate: !!emailCfg.paymentSuccessTemplateId,
+            },
+            "Payment success email enqueued"
+          );
         } catch (emailError) {
           logger.error(
             { userId, error: emailError.message },

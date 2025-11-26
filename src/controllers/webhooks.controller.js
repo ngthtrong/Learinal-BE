@@ -1,8 +1,9 @@
 const { UsersRepository, SubscriptionPlansRepository, AddonPackagesRepository, UserAddonPurchasesRepository, UserSubscriptionsRepository } = require("../repositories");
 const { ProcessedTransaction } = require("../models");
 const crypto = require("crypto");
-const { sepay } = require("../config");
+const { sepay, email: emailCfg } = require("../config");
 const createSepayClient = require("../adapters/sepayClient");
+const { enqueueEmail } = require("../adapters/queue");
 const logger = require("../utils/logger");
 
 const usersRepo = new UsersRepository();
@@ -21,8 +22,9 @@ function extractUserIdFromText(text) {
 
 function extractPlanId(text) {
   if (!text || typeof text !== "string") return null;
-  // Extract planId from content: "planId:<24hex>" or "planid<24hex>"
-  const m = text.match(/planid:?([a-f0-9]{24})/i);
+  // Extract planId from content: "planId:<hex>" or "planid<hex>"
+  // Banks may truncate QR content, so allow 4-24 hex chars for partial matching
+  const m = text.match(/planid:?([a-f0-9]{4,24})/i);
   return m ? m[1].toLowerCase() : null;
 }
 
@@ -90,6 +92,18 @@ module.exports = {
         return txDate && txDate >= oneHourAgo;
       });
 
+      // DEBUG LOG
+      logger.info({
+        totalTransactions: transactions.length,
+        recentTransactions: recentTransactions.length,
+        oneHourAgo: oneHourAgo.toISOString(),
+        allContents: transactions.map(tx => ({ 
+          content: tx.transaction_content, 
+          date: tx.transaction_date,
+          amount: tx.amount_in 
+        }))
+      }, "[Webhook] DEBUG - All transactions from Sepay");
+
       // Fetch all active subscription plans for matching
       const allPlans = await subscriptionPlansRepo.findMany(
         { status: "Active" }, 
@@ -104,11 +118,36 @@ module.exports = {
       }
 
       // Create a map of planId -> plan for quick lookup
+      // Also store list for prefix matching (bank may truncate QR content)
       const planMap = new Map();
+      const planList = [];
       allPlans.forEach(plan => {
         const planId = (plan.id || plan._id).toString().toLowerCase();
         planMap.set(planId, plan);
+        planList.push({ id: planId, plan });
       });
+
+      // Helper to find plan by exact match or prefix (with amount verification)
+      // If multiple plans match prefix, return the one matching the amount
+      const findPlanById = (partialId, expectedAmount = null) => {
+        if (planMap.has(partialId)) return planMap.get(partialId);
+        // Try prefix match for truncated IDs
+        const candidates = [];
+        for (const { id, plan } of planList) {
+          if (id.startsWith(partialId)) {
+            candidates.push(plan);
+          }
+        }
+        if (candidates.length === 0) return null;
+        if (candidates.length === 1) return candidates[0];
+        // Multiple matches - try to find one with matching price
+        if (expectedAmount !== null) {
+          const byPrice = candidates.find(p => p.price === expectedAmount);
+          if (byPrice) return byPrice;
+        }
+        // Return first candidate if no price match
+        return candidates[0];
+      };
 
       let matched = 0;
       let updated = 0;
@@ -120,23 +159,36 @@ module.exports = {
         const content = String(tx?.transaction_content || "");
 
         // Check for SEVQR prefix (but NOT addon - skip those with AD/addon)
-        if (!/SEVQR/i.test(content)) continue;
-        if (/SEVQR\s*(addon|AD)/i.test(content)) continue;
+        if (!/SEVQR/i.test(content)) {
+          logger.info({ content }, "[Webhook] Skip - no SEVQR prefix");
+          continue;
+        }
+        if (/SEVQR\s*(addon|AD)/i.test(content)) {
+          logger.info({ content }, "[Webhook] Skip - is addon transaction");
+          continue;
+        }
 
         const userId = extractUserIdFromText(content);
         const planId = extractPlanId(content);
 
-        if (!userId || !planId) continue;
+        logger.info({ content, userId, planId, amountIn }, "[Webhook] Extracted IDs from content");
 
-        // Find matching plan by planId
-        const plan = planMap.get(planId);
+        if (!userId || !planId) {
+          logger.info({ content, userId, planId }, "[Webhook] Skip - missing userId or planId");
+          continue;
+        }
+
+        // Find matching plan by planId (exact or prefix match, with amount hint)
+        const plan = findPlanById(planId, amountIn);
         if (!plan) {
+          logger.info({ planId, availablePlans: Array.from(planMap.keys()) }, "[Webhook] Plan not found in map");
           results.push({ userId, txId: tx.id, action: "plan_not_found", planId });
           continue;
         }
 
         // Verify amount matches plan price
         if (amountIn !== plan.price) {
+          logger.info({ amountIn, planPrice: plan.price, planId: plan._id }, "[Webhook] Amount mismatch");
           results.push({ userId, txId: tx.id, action: "amount_mismatch", expected: plan.price, actual: amountIn });
           continue;
         }
@@ -153,6 +205,12 @@ module.exports = {
 
         // Check and update user
         const current = await usersRepo.findByUserId(userId);
+        logger.info({ 
+          userId, 
+          userFound: !!current, 
+          currentStatus: current?.subscriptionStatus 
+        }, "[Webhook] User lookup result");
+
         if (current && current.subscriptionStatus === "None") {
           // Calculate renewal date based on billing cycle
           const renewalDate = new Date();
@@ -180,12 +238,49 @@ module.exports = {
             result: "activated"
           });
 
+          // Send payment success email
+          try {
+            const emailVariables = {
+              user_name: current.fullName || current.email,
+              plan_name: plan.planName,
+              amount: amountIn.toLocaleString("vi-VN"),
+              transaction_id: txId || "N/A",
+              renewal_date: renewalDate.toLocaleDateString("vi-VN", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              }),
+              billing_cycle: plan.billingCycle,
+            };
+
+            await enqueueEmail({
+              to: current.email,
+              subject: "Thanh toán thành công - Payment Successful",
+              templateId: emailCfg.paymentSuccessTemplateId || null,
+              variables: emailVariables,
+              options: {
+                dbTemplateId: "paymentSuccess",
+              },
+            });
+            logger.info(
+              { userId, email: current.email, planName: plan.planName },
+              "[Webhook] Payment success email enqueued"
+            );
+          } catch (emailError) {
+            logger.error(
+              { userId, error: emailError.message },
+              "[Webhook] Failed to enqueue payment success email"
+            );
+          }
+
           updated++;
           results.push({ userId, txId, planId, planName: plan.planName, action: "activated" });
           logger.info({ userId, planId, planName: plan.planName }, "[Webhook] Subscription activated");
         } else if (current) {
+          logger.info({ userId, currentStatus: current.subscriptionStatus }, "[Webhook] User already has subscription or not None");
           results.push({ userId, txId, planId, planName: plan.planName, action: "already_active_or_not_none" });
         } else {
+          logger.info({ userId }, "[Webhook] User not found");
           results.push({ userId, txId, planId, action: "user_not_found" });
         }
       }
@@ -249,6 +344,13 @@ module.exports = {
           continue;
         }
 
+        // Get user info for email
+        const user = await usersRepo.findByUserId(userId);
+        if (!user) {
+          addonResults.push({ userId, txId: tx.id, addonId, action: "user_not_found" });
+          continue;
+        }
+
         // Get user's active subscription for expiry date
         let subscriptionId = null;
         let expiryDate = null;
@@ -292,6 +394,42 @@ module.exports = {
           content,
           result: "activated"
         });
+
+        // Send addon purchase success email
+        try {
+          const emailVariables = {
+            user_name: user.fullName || user.email,
+            package_name: addon.packageName,
+            amount: amountIn.toLocaleString("vi-VN"),
+            transaction_id: txId || "N/A",
+            test_generations: addon.additionalTestGenerations,
+            validation_requests: addon.additionalValidationRequests,
+            purchase_date: new Date().toLocaleDateString("vi-VN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          };
+
+          await enqueueEmail({
+            to: user.email,
+            subject: "Mua gói bổ sung thành công - Addon Purchase Successful",
+            templateId: emailCfg.addonPurchaseTemplateId || null,
+            variables: emailVariables,
+            options: {
+              dbTemplateId: "addonPurchaseSuccess",
+            },
+          });
+          logger.info(
+            { userId, email: user.email, addonName: addon.packageName },
+            "[Webhook] Addon purchase success email enqueued"
+          );
+        } catch (emailError) {
+          logger.error(
+            { userId, error: emailError.message },
+            "[Webhook] Failed to enqueue addon purchase success email"
+          );
+        }
 
         addonActivated++;
         addonResults.push({
