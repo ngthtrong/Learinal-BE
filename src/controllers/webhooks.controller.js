@@ -1,10 +1,15 @@
-const { UsersRepository, SubscriptionPlansRepository } = require("../repositories");
+const { UsersRepository, SubscriptionPlansRepository, AddonPackagesRepository, UserAddonPurchasesRepository, UserSubscriptionsRepository } = require("../repositories");
+const { ProcessedTransaction } = require("../models");
 const crypto = require("crypto");
 const { sepay } = require("../config");
 const createSepayClient = require("../adapters/sepayClient");
+const logger = require("../utils/logger");
 
 const usersRepo = new UsersRepository();
 const subscriptionPlansRepo = new SubscriptionPlansRepository();
+const addonPackagesRepo = new AddonPackagesRepository();
+const userAddonPurchasesRepo = new UserAddonPurchasesRepository();
+const userSubscriptionsRepo = new UserSubscriptionsRepository();
 
 function extractUserIdFromText(text) {
   if (!text || typeof text !== "string") return null;
@@ -18,6 +23,13 @@ function extractPlanId(text) {
   if (!text || typeof text !== "string") return null;
   // Extract planId from content: "planId:<24hex>" or "planid<24hex>"
   const m = text.match(/planid:?([a-f0-9]{24})/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+function extractAddonId(text) {
+  if (!text || typeof text !== "string") return null;
+  // Extract addonId: "ad<hex>" (có thể < 24 ký tự vì bị ngân hàng cắt)
+  const m = text.match(/(?:addonid|ad):?([a-f0-9]{10,24})/i);
   return m ? m[1].toLowerCase() : null;
 }
 
@@ -71,6 +83,13 @@ module.exports = {
       const data = await client.listTransactions(params);
       const transactions = Array.isArray(data?.transactions) ? data.transactions : [];
 
+      // Only process transactions from the last 1 hour to avoid re-processing old ones after DB reset
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentTransactions = transactions.filter(tx => {
+        const txDate = tx.transaction_date ? new Date(tx.transaction_date) : null;
+        return txDate && txDate >= oneHourAgo;
+      });
+
       // Fetch all active subscription plans for matching
       const allPlans = await subscriptionPlansRepo.findMany(
         { status: "Active" }, 
@@ -95,13 +114,14 @@ module.exports = {
       let updated = 0;
       const results = [];
 
-      // Process each transaction
-      for (const tx of transactions) {
+      // Process each recent transaction for subscriptions
+      for (const tx of recentTransactions) {
         const amountIn = Number(tx?.amount_in || 0);
         const content = String(tx?.transaction_content || "");
 
-        // Check for SEVQR prefix
+        // Check for SEVQR prefix (but NOT addon - skip those with AD/addon)
         if (!/SEVQR/i.test(content)) continue;
+        if (/SEVQR\s*(addon|AD)/i.test(content)) continue;
 
         const userId = extractUserIdFromText(content);
         const planId = extractPlanId(content);
@@ -122,6 +142,14 @@ module.exports = {
         }
 
         matched++;
+        const txId = tx.id?.toString() || tx.reference_number;
+
+        // Check if already processed
+        const processedTx = await ProcessedTransaction.findOne({ transactionId: txId });
+        if (processedTx) {
+          results.push({ userId, txId, planId, action: "already_processed" });
+          continue;
+        }
 
         // Check and update user
         const current = await usersRepo.findByUserId(userId);
@@ -140,21 +168,150 @@ module.exports = {
             subscriptionPlanId: plan.id || plan._id,
             subscriptionRenewalDate: renewalDate,
           });
+
+          // Mark as processed
+          await ProcessedTransaction.create({
+            transactionId: txId,
+            type: "subscription",
+            userId,
+            referenceId: (plan.id || plan._id).toString(),
+            amount: amountIn,
+            content,
+            result: "activated"
+          });
+
           updated++;
-          results.push({ userId, txId: tx.id, planId, planName: plan.planName, action: "activated" });
+          results.push({ userId, txId, planId, planName: plan.planName, action: "activated" });
+          logger.info({ userId, planId, planName: plan.planName }, "[Webhook] Subscription activated");
         } else if (current) {
-          results.push({ userId, txId: tx.id, planId, planName: plan.planName, action: "already_active_or_not_none" });
+          results.push({ userId, txId, planId, planName: plan.planName, action: "already_active_or_not_none" });
         } else {
-          results.push({ userId, txId: tx.id, planId, action: "user_not_found" });
+          results.push({ userId, txId, planId, action: "user_not_found" });
         }
+      }
+
+      // ========== ADDON PACKAGES PROCESSING ==========
+      // Fetch all active addon packages
+      const allAddons = await addonPackagesRepo.findActivePackages();
+      const addonMap = new Map();
+      const addonList = [];
+      if (allAddons && allAddons.length > 0) {
+        allAddons.forEach((addon) => {
+          const addonId = (addon.id || addon._id).toString().toLowerCase();
+          addonMap.set(addonId, addon);
+          addonList.push({ id: addonId, addon });
+        });
+      }
+
+      // Helper to find addon by exact or prefix match
+      const findAddonById = (partialId) => {
+        if (addonMap.has(partialId)) return addonMap.get(partialId);
+        for (const { id, addon } of addonList) {
+          if (id.startsWith(partialId)) return addon;
+        }
+        return null;
+      };
+
+      let addonMatched = 0;
+      let addonActivated = 0;
+      const addonResults = [];
+
+      for (const tx of recentTransactions) {
+        const amountIn = Number(tx?.amount_in || 0);
+        const content = String(tx?.transaction_content || "");
+
+        // Check for SEVQR AD (addon) prefix
+        if (!/SEVQR\s*(addon|AD)/i.test(content)) continue;
+
+        const userId = extractUserIdFromText(content);
+        const addonId = extractAddonId(content);
+
+        if (!userId || !addonId) continue;
+
+        const addon = findAddonById(addonId);
+        if (!addon) {
+          addonResults.push({ userId, txId: tx.id, addonId, action: "addon_not_found" });
+          continue;
+        }
+
+        if (amountIn !== addon.price) {
+          addonResults.push({ userId, txId: tx.id, addonId, action: "amount_mismatch", expected: addon.price, actual: amountIn });
+          continue;
+        }
+
+        addonMatched++;
+        const txId = tx.id?.toString() || tx.reference_number;
+
+        // Check if already processed
+        const processedTx = await ProcessedTransaction.findOne({ transactionId: txId });
+        if (processedTx) {
+          addonResults.push({ userId, txId, addonId, action: "already_processed" });
+          continue;
+        }
+
+        // Get user's active subscription for expiry date
+        let subscriptionId = null;
+        let expiryDate = null;
+        const activeSubscription = await userSubscriptionsRepo.findOne(
+          { userId, status: "Active" },
+          null,
+          { sort: { currentPeriodEnd: -1 } }
+        );
+        if (activeSubscription) {
+          subscriptionId = activeSubscription._id || activeSubscription.id;
+          expiryDate = activeSubscription.currentPeriodEnd || null;
+        }
+
+        // Create addon purchase
+        const purchase = await userAddonPurchasesRepo.create({
+          userId,
+          addonPackageId: addon._id || addon.id,
+          subscriptionId,
+          packageSnapshot: {
+            packageName: addon.packageName,
+            price: addon.price,
+            additionalTestGenerations: addon.additionalTestGenerations,
+            additionalValidationRequests: addon.additionalValidationRequests
+          },
+          remainingTestGenerations: addon.additionalTestGenerations,
+          remainingValidationRequests: addon.additionalValidationRequests,
+          status: "Active",
+          purchaseDate: new Date(),
+          expiryDate,
+          paymentReference: txId,
+          amountPaid: amountIn
+        });
+
+        // Mark as processed
+        await ProcessedTransaction.create({
+          transactionId: txId,
+          type: "addon",
+          userId,
+          referenceId: (addon._id || addon.id).toString(),
+          amount: amountIn,
+          content,
+          result: "activated"
+        });
+
+        addonActivated++;
+        addonResults.push({
+          userId,
+          txId,
+          addonId: (addon._id || addon.id).toString(),
+          addonName: addon.packageName,
+          purchaseId: purchase._id,
+          action: "activated"
+        });
+
+        logger.info({ userId, addonId, addonName: addon.packageName, purchaseId: purchase._id }, "[Webhook] Addon package activated");
       }
 
       return res.status(200).json({ 
         ok: true, 
-        processed: transactions.length,
-        matched, 
-        updated,
-        results 
+        totalTransactions: transactions.length,
+        recentTransactions: recentTransactions.length,
+        subscription: { matched, updated, results },
+        addon: { matched: addonMatched, activated: addonActivated, results: addonResults }
       });
     } catch (e) {
       return next(e);

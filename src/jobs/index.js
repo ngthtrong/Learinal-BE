@@ -8,4 +8,5 @@ module.exports = {
   subscriptionExpiration: require('./subscription.expiration'),
   subscriptionRenewalReminder: require('./subscription.renewal-reminder'),
   commissionCalculate: require('./commission.calculate'),
+  addonScan: require('./addon.scan'),
 };

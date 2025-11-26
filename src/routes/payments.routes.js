@@ -14,4 +14,7 @@ router.post("/sepay/transactions", paymentsController.listSepayTransactions);
 // Scan transactions (consider protecting with Admin role in production)
 router.post("/sepay/scan", paymentsController.scanSepayTransactions);
 
+// Scan addon transactions
+router.post("/sepay/scan-addons", paymentsController.scanSepayAddonTransactions);
+
 module.exports = router;

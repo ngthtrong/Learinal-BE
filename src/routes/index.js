@@ -13,6 +13,7 @@ router.use("/validation-requests", require("./validationRequests.routes"));
 router.use("/commission-records", require("./commissionRecords.routes"));
 router.use("/subscription-plans", require("./subscriptionPlans.routes"));
 router.use("/user-subscriptions", require("./userSubscriptions.routes"));
+router.use("/addon-packages", require("./addonPackages.routes"));
 router.use("/notifications", require("./notifications.routes"));
 router.use("/admin", require("./admin.routes"));
 router.use("/moderation", require("./moderation.routes"));

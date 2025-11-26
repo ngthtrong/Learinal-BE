@@ -1,9 +1,11 @@
 /**
  * Middleware to check user's subscription entitlements
+ * Hỗ trợ cả quota từ subscription plan và add-on packages
  */
 
 const User = require("../models/user.model");
 const SubscriptionPlan = require("../models/subscriptionPlan.model");
+const logger = require("../utils/logger");
 
 /**
  * Tính ngày bắt đầu của billing cycle hiện tại dựa trên ngày mua gói
@@ -44,7 +46,7 @@ function getBillingCycleStart(subscriptionStartDate) {
 
 async function checkQuestionGenerationLimit(req, res, next) {
   try {
-    const { userSubscriptionsService, usageTrackingRepository } = req.app.locals;
+    const { userSubscriptionsService, usageTrackingRepository, addonPackagesService } = req.app.locals;
 
     // BƯỚC 1: Lấy subscription active của user
     let subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
@@ -78,7 +80,7 @@ async function checkQuestionGenerationLimit(req, res, next) {
 
     // BƯỚC 3: Nếu unlimited thì bỏ qua kiểm tra
     if (maxMonthlyTestGenerations === "unlimited") {
-      req.entitlement = { usedTests: 0, maxTests: "unlimited" };
+      req.entitlement = { usedTests: 0, maxTests: "unlimited", addonQuota: 0 };
       return next();
     }
 
@@ -94,15 +96,55 @@ async function checkQuestionGenerationLimit(req, res, next) {
       billingCycleStart
     );
 
-    // BƯỚC 6: So sánh với giới hạn
-    if (count >= maxMonthlyTestGenerations) {
+    // BƯỚC 6: Lấy quota từ add-on packages
+    let addonQuota = 0;
+    if (addonPackagesService) {
+      const addonQuotaInfo = await addonPackagesService.getUserAddonQuota(req.user.id);
+      addonQuota = addonQuotaInfo.totalTestGenerations || 0;
+    }
+
+    // BƯỚC 7: Tính tổng quota = subscription + addon
+    const totalQuota = maxMonthlyTestGenerations + addonQuota;
+
+    // BƯỚC 8: So sánh với tổng giới hạn
+    if (count >= totalQuota) {
+      logger.warn(
+        {
+          userId: req.user.id,
+          used: count,
+          subscriptionLimit: maxMonthlyTestGenerations,
+          addonQuota,
+          totalQuota
+        },
+        "[checkQuestionGenerationLimit] Limit exceeded"
+      );
       throw Object.assign(
-        new Error(`Monthly test generation limit reached (${maxMonthlyTestGenerations})`),
-        { status: 403, code: "LimitExceeded" }
+        new Error(`Bạn đã hết lượt tạo đề trong tháng này (${count}/${maxMonthlyTestGenerations} từ gói + ${addonQuota} từ add-on). Vui lòng mua thêm gói add-on để tiếp tục.`),
+        { 
+          status: 403, 
+          code: "LimitExceeded",
+          details: {
+            used: count,
+            subscriptionLimit: maxMonthlyTestGenerations,
+            addonQuota,
+            totalQuota,
+            feature: "question_set_generation",
+            upgradeUrl: "/addon-packages"
+          }
+        }
       );
     }
 
-    req.entitlement = { usedTests: count, maxTests: maxMonthlyTestGenerations };
+    // Đánh dấu cần dùng addon quota nếu subscription quota đã hết
+    req.useAddonQuota = count >= maxMonthlyTestGenerations;
+    req.entitlement = { 
+      usedTests: count, 
+      maxTests: maxMonthlyTestGenerations, 
+      addonQuota,
+      totalQuota,
+      remainingFromSubscription: Math.max(0, maxMonthlyTestGenerations - count),
+      remainingFromAddon: addonQuota
+    };
     next();
   } catch (e) {
     next(e);
@@ -111,8 +153,7 @@ async function checkQuestionGenerationLimit(req, res, next) {
 
 async function checkValidationRequestLimit(req, res, next) {
   try {
-    const { userSubscriptionsService, usageTrackingRepository } = req.app.locals;
-    const logger = req.app.locals.logger || console;
+    const { userSubscriptionsService, usageTrackingRepository, addonPackagesService } = req.app.locals;
 
     // Get active subscription from UserSubscription collection
     let subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
@@ -154,7 +195,7 @@ async function checkValidationRequestLimit(req, res, next) {
 
     // If unlimited, skip check
     if (maxValidationRequests === "unlimited") {
-      req.entitlement = { usedRequests: 0, maxRequests: "unlimited" };
+      req.entitlement = { usedRequests: 0, maxRequests: "unlimited", addonQuota: 0 };
       return next();
     }
 
@@ -169,47 +210,75 @@ async function checkValidationRequestLimit(req, res, next) {
       billingCycleStart
     );
 
+    // Lấy quota từ add-on packages
+    let addonQuota = 0;
+    if (addonPackagesService) {
+      const addonQuotaInfo = await addonPackagesService.getUserAddonQuota(req.user.id);
+      addonQuota = addonQuotaInfo.totalValidationRequests || 0;
+    }
+
+    // Tính tổng quota = subscription + addon
+    const totalQuota = maxValidationRequests + addonQuota;
+
     logger.info(
       {
         userId: req.user.id,
         count,
         maxValidationRequests,
+        addonQuota,
+        totalQuota,
         billingCycleStart,
       },
       "[checkValidationRequestLimit] Usage count"
     );
 
-    if (count >= maxValidationRequests) {
+    if (count >= totalQuota) {
       logger.warn(
         {
           userId: req.user.id,
           count,
           maxValidationRequests,
+          addonQuota,
+          totalQuota,
         },
         "[checkValidationRequestLimit] Limit exceeded"
       );
       throw Object.assign(
         new Error(
-          `Bạn đã hết lượt gửi kiểm duyệt trong tháng này (${count}/${maxValidationRequests}). Vui lòng nâng cấp gói để tiếp tục sử dụng.`
+          `Bạn đã hết lượt gửi kiểm duyệt trong tháng này (${count}/${maxValidationRequests} từ gói + ${addonQuota} từ add-on). Vui lòng mua thêm gói add-on để tiếp tục.`
         ),
         { 
           status: 403, 
           code: "LimitExceeded",
           details: {
             used: count,
-            limit: maxValidationRequests,
-            feature: "validation_requests"
+            subscriptionLimit: maxValidationRequests,
+            addonQuota,
+            totalQuota,
+            feature: "validation_requests",
+            upgradeUrl: "/addon-packages"
           }
         }
       );
     }
 
-    req.entitlement = { usedRequests: count, maxRequests: maxValidationRequests };
+    // Đánh dấu cần dùng addon quota nếu subscription quota đã hết
+    req.useAddonQuota = count >= maxValidationRequests;
+    req.entitlement = { 
+      usedRequests: count, 
+      maxRequests: maxValidationRequests,
+      addonQuota,
+      totalQuota,
+      remainingFromSubscription: Math.max(0, maxValidationRequests - count),
+      remainingFromAddon: addonQuota
+    };
     logger.info(
       {
         userId: req.user.id,
         usedRequests: count,
         maxRequests: maxValidationRequests,
+        addonQuota,
+        totalQuota,
       },
       "[checkValidationRequestLimit] Check passed"
     );
