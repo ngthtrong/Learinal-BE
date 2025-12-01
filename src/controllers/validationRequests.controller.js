@@ -177,7 +177,7 @@ module.exports = {
 
       // Emit real-time notification if assigned to expert
       if (req.body.expertId && req.body.status === "Assigned") {
-        notificationService.emitValidationAssigned(req.body.expertId, updated);
+        await notificationService.emitValidationAssigned(req.body.expertId, updated);
       }
 
       res.status(200).json(mapId(updated));
@@ -198,7 +198,7 @@ module.exports = {
         return res.status(400).json({ code: 'InvalidState', message: 'Request is not available to claim' });
       }
       const updated = await repo.updateById(requestId, { $set: { expertId, status: 'Assigned', claimedAt: new Date() } }, { new: true });
-      notificationService.emitValidationAssigned(expertId, updated);
+      await notificationService.emitValidationAssigned(expertId, updated);
       res.status(200).json(mapId(updated));
     } catch (e) {
       next(e);
@@ -276,9 +276,9 @@ module.exports = {
 
       // 6. Emit real-time notification to learner
       const updatedRequest = await repo.findById(requestId);
-      if (updatedRequest && updatedRequest.requestedBy) {
-        notificationService.emitValidationCompleted(
-          updatedRequest.requestedBy.toString(),
+      if (updatedRequest && updatedRequest.learnerId) {
+        await notificationService.emitValidationCompleted(
+          updatedRequest.learnerId.toString(),
           updatedRequest
         );
       }
@@ -335,7 +335,7 @@ module.exports = {
 
       // 4. Notify expert about revision request
       if (request.expertId) {
-        notificationService.emitRevisionRequested(
+        await notificationService.emitRevisionRequested(
           request.expertId.toString(),
           {
             requestId,

@@ -31,22 +31,10 @@ module.exports = async function reviewCompleted(payload) {
     const learner = await usersRepo.findById(validationRequest.learnerId.toString());
     const questionSet = await questionSetsRepo.findById(setId);
 
-    // 3. Send notification to Learner
-    if (learner && learner.email) {
-      await enqueueEmail({
-        to: learner.email,
-        templateId: 'validationCompleted',
-        variables: {
-          learnerName: learner.displayName || learner.email,
-          setTitle: questionSet?.title || 'Your question set',
-          status: decision === 'Approved' ? 'approved' : 'rejected',
-          feedback: validationRequest.feedback || 'No feedback provided',
-          setLink: `${process.env.APP_BASE_URL || 'http://localhost:3000'}/question-sets/${setId}`,
-        },
-      });
-
-      logger.info({ learnerEmail: learner.email }, 'Notification email sent to learner');
-    }
+    // 3. No email notification - using in-app notification only
+    // Email notification has been replaced with real-time + persistent notifications
+    // sent from validationRequests.controller.js via notificationService.emitValidationCompleted()
+    logger.info({ learnerEmail: learner?.email }, 'Using in-app notification instead of email');
 
     // 4. Commission records will be created when learners complete quiz attempts
     // Not at validation approval time
