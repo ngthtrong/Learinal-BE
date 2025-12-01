@@ -120,13 +120,13 @@ module.exports = {
   },
 
   /**
-   * GET /admin/financials?year=YYYY
+   * GET /admin/financials?year=YYYY or ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
    * Monthly financial statistics (subscriptions vs commissions)
    */
   getFinancials: async (req, res, next) => {
     try {
-      const { year } = req.query;
-      const data = await adminService.getFinancials(year);
+      const { year, startDate, endDate } = req.query;
+      const data = await adminService.getFinancials({ year, startDate, endDate });
       res.json(data);
     } catch (e) {
       next(e);

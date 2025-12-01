@@ -239,76 +239,172 @@ class AdminService {
   }
 
   /**
-   * Financial statistics (monthly for a given year)
+   * Financial statistics (monthly for a given year or date range)
    * Aggregates subscription gross and commissions paid to compute net.
+   * @param {Object} options - { year, startDate, endDate }
    */
-  async getFinancials(yearInput) {
-    const year = parseInt(yearInput, 10) || new Date().getFullYear();
-    const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0);
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999);
+  async getFinancials(options = {}) {
+    const { year: yearInput, startDate: startDateInput, endDate: endDateInput } = options;
+
+    let startOfPeriod, endOfPeriod, groupBy = 'month';
+
+    // Priority: if startDate and endDate are provided, use them
+    if (startDateInput && endDateInput) {
+      startOfPeriod = new Date(startDateInput);
+      endOfPeriod = new Date(endDateInput);
+      endOfPeriod.setHours(23, 59, 59, 999); // End of day
+      
+      // Determine grouping: if same month and year, group by day
+      if (
+        startOfPeriod.getFullYear() === endOfPeriod.getFullYear() &&
+        startOfPeriod.getMonth() === endOfPeriod.getMonth()
+      ) {
+        groupBy = 'day';
+      }
+    } else {
+      // Otherwise use year
+      const year = parseInt(yearInput, 10) || new Date().getFullYear();
+      startOfPeriod = new Date(year, 0, 1, 0, 0, 0, 0);
+      endOfPeriod = new Date(year, 11, 31, 23, 59, 59, 999);
+    }
 
     const UserSubscription = require("../models/userSubscription.model");
     const SubscriptionPlan = require("../models/subscriptionPlan.model");
     const CommissionRecord = require("../models/commissionRecord.model");
 
-    // Fetch all active subscriptions started within year (approx revenue attribution on start)
+    // Fetch all active subscriptions started within period
     const subs = await UserSubscription.find({
-      startDate: { $gte: startOfYear, $lte: endOfYear },
+      startDate: { $gte: startOfPeriod, $lte: endOfPeriod },
       status: { $in: ["Active", "Expired", "Cancelled", "PendingPayment"] },
     })
       .populate("planId")
       .lean();
 
-    // Fetch paid commissions within year (using paidAt if present else createdAt)
+    // Fetch paid commissions within period
     const commissions = await CommissionRecord.find({
       status: "Paid",
       $or: [
-        { paidAt: { $gte: startOfYear, $lte: endOfYear } },
-        { paidAt: { $exists: false }, createdAt: { $gte: startOfYear, $lte: endOfYear } },
+        { paidAt: { $gte: startOfPeriod, $lte: endOfPeriod } },
+        { paidAt: { $exists: false }, createdAt: { $gte: startOfPeriod, $lte: endOfPeriod } },
       ],
     }).lean();
 
-    // Build months skeleton
-    const months = Array.from({ length: 12 }, (_, i) => ({
-      month: i + 1,
-      subscriptionRevenue: 0,
-      commissionsPaid: 0,
-      net: 0,
-    }));
+    let periods = [];
 
-    // Aggregate subscriptions
-    for (const s of subs) {
-      const date = s.startDate instanceof Date ? s.startDate : new Date(s.startDate);
-      const m = date.getMonth(); // 0-11
-      const price = s.planId?.price || 0;
-      months[m].subscriptionRevenue += price;
-    }
+    if (groupBy === 'day') {
+      // Group by day
+      const daysDiff = Math.ceil((endOfPeriod - startOfPeriod) / (1000 * 60 * 60 * 24)) + 1;
+      const tempDate = new Date(startOfPeriod);
+      
+      for (let i = 0; i < daysDiff; i++) {
+        periods.push({
+          day: tempDate.getDate(),
+          month: tempDate.getMonth() + 1,
+          year: tempDate.getFullYear(),
+          subscriptionRevenue: 0,
+          commissionsPaid: 0,
+          net: 0,
+        });
+        tempDate.setDate(tempDate.getDate() + 1);
+      }
 
-    // Aggregate commissions
-    for (const c of commissions) {
-      const date = c.paidAt
-        ? c.paidAt instanceof Date
-          ? c.paidAt
-          : new Date(c.paidAt)
-        : c.createdAt instanceof Date
-          ? c.createdAt
-          : new Date(c.createdAt);
-      const m = date.getMonth();
-      months[m].commissionsPaid += c.commissionAmount || 0;
+      // Aggregate subscriptions by day
+      for (const s of subs) {
+        const date = s.startDate instanceof Date ? s.startDate : new Date(s.startDate);
+        const periodIndex = periods.findIndex(
+          (p) => 
+            p.day === date.getDate() &&
+            p.month === date.getMonth() + 1 && 
+            p.year === date.getFullYear()
+        );
+        if (periodIndex >= 0) {
+          const price = s.planId?.price || 0;
+          periods[periodIndex].subscriptionRevenue += price;
+        }
+      }
+
+      // Aggregate commissions by day
+      for (const c of commissions) {
+        const date = c.paidAt
+          ? c.paidAt instanceof Date
+            ? c.paidAt
+            : new Date(c.paidAt)
+          : c.createdAt instanceof Date
+            ? c.createdAt
+            : new Date(c.createdAt);
+        const periodIndex = periods.findIndex(
+          (p) => 
+            p.day === date.getDate() &&
+            p.month === date.getMonth() + 1 && 
+            p.year === date.getFullYear()
+        );
+        if (periodIndex >= 0) {
+          periods[periodIndex].commissionsPaid += c.commissionAmount || 0;
+        }
+      }
+    } else {
+      // Group by month
+      const monthsDiff =
+        (endOfPeriod.getFullYear() - startOfPeriod.getFullYear()) * 12 +
+        (endOfPeriod.getMonth() - startOfPeriod.getMonth()) +
+        1;
+
+      const tempDate = new Date(startOfPeriod);
+      for (let i = 0; i < monthsDiff; i++) {
+        periods.push({
+          month: tempDate.getMonth() + 1,
+          year: tempDate.getFullYear(),
+          subscriptionRevenue: 0,
+          commissionsPaid: 0,
+          net: 0,
+        });
+        tempDate.setMonth(tempDate.getMonth() + 1);
+      }
+
+      // Aggregate subscriptions by month
+      for (const s of subs) {
+        const date = s.startDate instanceof Date ? s.startDate : new Date(s.startDate);
+        const periodIndex = periods.findIndex(
+          (p) => p.month === date.getMonth() + 1 && p.year === date.getFullYear()
+        );
+        if (periodIndex >= 0) {
+          const price = s.planId?.price || 0;
+          periods[periodIndex].subscriptionRevenue += price;
+        }
+      }
+
+      // Aggregate commissions by month
+      for (const c of commissions) {
+        const date = c.paidAt
+          ? c.paidAt instanceof Date
+            ? c.paidAt
+            : new Date(c.paidAt)
+          : c.createdAt instanceof Date
+            ? c.createdAt
+            : new Date(c.createdAt);
+        const periodIndex = periods.findIndex(
+          (p) => p.month === date.getMonth() + 1 && p.year === date.getFullYear()
+        );
+        if (periodIndex >= 0) {
+          periods[periodIndex].commissionsPaid += c.commissionAmount || 0;
+        }
+      }
     }
 
     // Compute net and totals
     let totalSubs = 0;
     let totalCommissions = 0;
-    for (const row of months) {
+    for (const row of periods) {
       row.net = row.subscriptionRevenue - row.commissionsPaid;
       totalSubs += row.subscriptionRevenue;
       totalCommissions += row.commissionsPaid;
     }
 
     return {
-      year,
-      months,
+      startDate: startOfPeriod,
+      endDate: endOfPeriod,
+      groupBy,
+      periods,
       totals: {
         subscriptionRevenue: totalSubs,
         commissionsPaid: totalCommissions,
