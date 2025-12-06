@@ -27,6 +27,7 @@ module.exports = {
           price: pkg.price,
           additionalTestGenerations: pkg.additionalTestGenerations,
           additionalValidationRequests: pkg.additionalValidationRequests,
+          additionalDocumentUploads: pkg.additionalDocumentUploads,
           validityDays: pkg.validityDays,
           packageType: pkg.packageType,
           displayOrder: pkg.displayOrder
@@ -53,6 +54,7 @@ module.exports = {
         price: pkg.price,
         additionalTestGenerations: pkg.additionalTestGenerations,
         additionalValidationRequests: pkg.additionalValidationRequests,
+        additionalDocumentUploads: pkg.additionalDocumentUploads,
         validityDays: pkg.validityDays,
         packageType: pkg.packageType,
         status: pkg.status,
@@ -89,6 +91,7 @@ module.exports = {
           expiryDate: p.expiryDate,
           remainingTestGenerations: p.remainingTestGenerations,
           remainingValidationRequests: p.remainingValidationRequests,
+          remainingDocumentUploads: p.remainingDocumentUploads,
           status: p.status,
           amountPaid: p.amountPaid
         })),
@@ -112,7 +115,8 @@ module.exports = {
 
       return res.status(200).json({
         totalTestGenerations: quota.totalTestGenerations,
-        totalValidationRequests: quota.totalValidationRequests
+        totalValidationRequests: quota.totalValidationRequests,
+        totalDocumentUploads: quota.totalDocumentUploads
       });
     } catch (err) {
       next(err);
@@ -244,6 +248,7 @@ module.exports = {
           price: pkg.price,
           additionalTestGenerations: pkg.additionalTestGenerations,
           additionalValidationRequests: pkg.additionalValidationRequests,
+          additionalDocumentUploads: pkg.additionalDocumentUploads,
           validityDays: pkg.validityDays,
           packageType: pkg.packageType,
           maxPurchasesPerUser: pkg.maxPurchasesPerUser,
@@ -272,6 +277,7 @@ module.exports = {
         price,
         additionalTestGenerations = 0,
         additionalValidationRequests = 0,
+        additionalDocumentUploads = 0,
         validityDays = 0,
         packageType = "stackable",
         maxPurchasesPerUser = 0,
@@ -300,6 +306,7 @@ module.exports = {
         price,
         additionalTestGenerations,
         additionalValidationRequests,
+        additionalDocumentUploads,
         validityDays,
         packageType,
         maxPurchasesPerUser,
@@ -321,6 +328,7 @@ module.exports = {
           price: pkg.price,
           additionalTestGenerations: pkg.additionalTestGenerations,
           additionalValidationRequests: pkg.additionalValidationRequests,
+          additionalDocumentUploads: pkg.additionalDocumentUploads,
           validityDays: pkg.validityDays,
           packageType: pkg.packageType,
           status: pkg.status
@@ -343,7 +351,7 @@ module.exports = {
       const updateData = {};
       const allowedFields = [
         "packageName", "description", "price",
-        "additionalTestGenerations", "additionalValidationRequests",
+        "additionalTestGenerations", "additionalValidationRequests", "additionalDocumentUploads",
         "validityDays", "packageType", "maxPurchasesPerUser",
         "displayOrder", "status"
       ];
@@ -377,6 +385,7 @@ module.exports = {
           price: pkg.price,
           additionalTestGenerations: pkg.additionalTestGenerations,
           additionalValidationRequests: pkg.additionalValidationRequests,
+          additionalDocumentUploads: pkg.additionalDocumentUploads,
           validityDays: pkg.validityDays,
           packageType: pkg.packageType,
           maxPurchasesPerUser: pkg.maxPurchasesPerUser,

@@ -53,6 +53,8 @@ const upload = multer({
   },
 });
 
+const { checkDocumentUploadLimit } = require("../middleware/checkEntitlement");
+
 const createSchema = Joi.object({
   body: Joi.object({ subjectId: Joi.string().required() }),
 }).unknown(true);
@@ -63,6 +65,7 @@ router.post(
   authenticateJWT,
   upload.single("file"),
   inputValidation(createSchema),
+  checkDocumentUploadLimit,
   controller.create
 );
 // Cache document metadata (5 minutes TTL)

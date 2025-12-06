@@ -15,6 +15,56 @@ function mapId(doc) {
   return { id: String(_id || rest.id), ...rest };
 }
 
+/**
+ * Regenerate subject's table of contents after a document is deleted
+ * If no documents remain, clear the subject's TOC
+ */
+async function regenerateSubjectTocAfterDelete(subjectId, docsRepo, subjectsRepo, llmClient) {
+  logger.info({ subjectId }, "[subject-toc] regenerating after document delete");
+
+  // Get all completed documents in this subject
+  const documents = await docsRepo.findMany(
+    { subjectId, status: "Completed" },
+    {
+      projection: {
+        originalFileName: 1,
+        summaryShort: 1,
+        summaryFull: 1,
+        tableOfContents: 1,
+      },
+      sort: { uploadedAt: 1 },
+    }
+  );
+
+  // If no completed documents remain, clear the subject's TOC
+  if (!documents || documents.length === 0) {
+    await subjectsRepo.updateById(subjectId, { $set: { tableOfContents: [] } }, { new: true });
+    logger.info({ subjectId }, "[subject-toc] cleared (no documents remaining)");
+    return;
+  }
+
+  logger.info({ subjectId, docCount: documents.length }, "[subject-toc] regenerating from remaining documents");
+
+  // Generate subject TOC from remaining documents
+  const { tableOfContents } = await llmClient.generateSubjectTableOfContents({ documents });
+
+  if (tableOfContents && Array.isArray(tableOfContents) && tableOfContents.length > 0) {
+    await subjectsRepo.updateById(subjectId, { $set: { tableOfContents } }, { new: true });
+    logger.info(
+      {
+        subjectId,
+        tocItems: tableOfContents.length,
+        topics: tableOfContents.map((t) => t.topicName),
+      },
+      "[subject-toc] regenerated successfully"
+    );
+  } else {
+    // If LLM returns empty, clear the TOC
+    await subjectsRepo.updateById(subjectId, { $set: { tableOfContents: [] } }, { new: true });
+    logger.warn({ subjectId }, "[subject-toc] cleared (LLM returned empty)");
+  }
+}
+
 module.exports = {
   // POST /documents (multipart/form-data with file)
   create: async (req, res, next) => {
@@ -22,6 +72,18 @@ module.exports = {
 
     try {
       const user = req.user;
+      
+      // Debug logging
+      logger.info(
+        { 
+          userId: user?.id,
+          subjectId: req.body?.subjectId,
+          file: req.file ? { name: req.file.originalname, size: req.file.size } : null,
+          bodyKeys: Object.keys(req.body || {})
+        },
+        "[documents.create] Starting document upload"
+      );
+      
       if (!req.file) {
         return res.status(400).json({ code: "ValidationError", message: "Missing file" });
       }
@@ -58,7 +120,47 @@ module.exports = {
         status: "Processing",
         uploadedAt: now,
       };
-      const created = await docsRepo.create(toCreate);
+      
+      logger.info({ toCreate }, "[documents.create] Creating document with data");
+      
+      let created;
+      try {
+        created = await docsRepo.create(toCreate);
+      } catch (createError) {
+        logger.error(
+          { 
+            error: createError.message, 
+            errors: createError.errors,
+            toCreate 
+          },
+          "[documents.create] Failed to create document"
+        );
+        throw createError;
+      }
+
+      // Track document upload for quota counting (prevents abuse via delete)
+      // Wrap in try-catch to not fail the upload if tracking fails
+      const { usageTrackingRepository } = req.app.locals;
+      if (usageTrackingRepository) {
+        try {
+          await usageTrackingRepository.trackAction(
+            user.id,
+            "document_upload",
+            String(created._id || created.id),
+            { subjectId: req.body.subjectId, fileName: req.file.originalname }
+          );
+          logger.info(
+            { userId: user.id, documentId: String(created._id || created.id) },
+            "[documents] Tracked document upload action"
+          );
+        } catch (trackingError) {
+          // Log error but don't fail the upload
+          logger.error(
+            { userId: user.id, documentId: String(created._id || created.id), error: trackingError.message },
+            "[documents] Failed to track document upload action - upload still successful"
+          );
+        }
+      }
 
       // Kick off ingestion + summary chain (prefer queue only when explicitly enabled)
       const jobPayload = {
@@ -105,6 +207,25 @@ module.exports = {
           { documentId: jobPayload.documentId, err: e?.message || e },
           "[documents] enqueue failed; falling back to inline ingestion"
         );
+      }
+
+      // Consume addon quota if needed (when user exceeded subscription limit)
+      if (req.shouldConsumeAddonDocumentQuota) {
+        const { addonPackagesService } = req.app.locals;
+        if (addonPackagesService) {
+          try {
+            await addonPackagesService.tryConsumeAddonQuota(user.id, "document_upload");
+            logger.info(
+              { userId: user.id, documentId: String(created._id || created.id) },
+              "[documents] Consumed addon document quota"
+            );
+          } catch (err) {
+            logger.warn(
+              { userId: user.id, err: err?.message },
+              "[documents] Failed to consume addon quota"
+            );
+          }
+        }
       }
 
       return res.status(201).json(mapId(created));
@@ -157,6 +278,8 @@ module.exports = {
         return res.status(404).json({ code: "NotFound", message: "Document not found" });
       }
 
+      const subjectId = doc.subjectId;
+
       // Xóa file trong storage
       if (doc.storagePath) {
         await _storage.delete(doc.storagePath).catch((err) => {
@@ -169,6 +292,24 @@ module.exports = {
 
       // Xóa document từ database
       await docsRepo.deleteById(req.params.id);
+
+      // Regenerate subject TOC after document deletion (async, don't block response)
+      if (subjectId) {
+        const { subjectsRepository, llmClient } = req.app.locals;
+        if (subjectsRepository && llmClient) {
+          // Run in background to not block response
+          setImmediate(async () => {
+            try {
+              await regenerateSubjectTocAfterDelete(subjectId, docsRepo, subjectsRepository, llmClient);
+            } catch (err) {
+              logger.error(
+                { subjectId, error: err.message },
+                "[documents] Failed to regenerate subject TOC after delete"
+              );
+            }
+          });
+        }
+      }
 
       return res.status(204).send();
     } catch (e) {

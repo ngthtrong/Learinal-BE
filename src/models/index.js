@@ -7,6 +7,7 @@ module.exports = {
   ValidationRequest: require("./validationRequest.model"),
   CommissionRecord: require("./commissionRecord.model"),
   SubscriptionPlan: require("./subscriptionPlan.model"),
+  SubscriptionPlanAuditLog: require("./subscriptionPlanAuditLog.model"),
   UserSubscription: require("./userSubscription.model"),
   Notification: require("./notification.model"),
   RefreshToken: require("./refreshToken.model"),

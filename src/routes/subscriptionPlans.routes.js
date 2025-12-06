@@ -13,4 +13,8 @@ router.get("/:id", controller.get);
 router.patch("/:id", authenticateJWT, authorizeRole("Admin"), controller.update);
 router.delete("/:id", authenticateJWT, authorizeRole("Admin"), controller.remove);
 
+// Admin only: Audit log endpoints
+// Note: Place audit-logs routes before :id routes to avoid conflicts
+router.get("/:id/audit-logs", authenticateJWT, authorizeRole("Admin"), controller.getAuditHistory);
+
 module.exports = router;

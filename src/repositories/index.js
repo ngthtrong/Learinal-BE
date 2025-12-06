@@ -6,6 +6,7 @@ const QuizAttemptsRepository = require("./quizAttempts.repository");
 const ValidationRequestsRepository = require("./validationRequests.repository");
 const CommissionRecordsRepository = require("./commissionRecords.repository");
 const SubscriptionPlansRepository = require("./subscriptionPlans.repository");
+const SubscriptionPlanAuditLogsRepository = require("./subscriptionPlanAuditLogs.repository");
 const UserSubscriptionsRepository = require("./userSubscriptions.repository");
 const NotificationsRepository = require("./notifications.repository");
 const UsageTrackingRepository = require("./usageTracking.repository");
@@ -22,6 +23,7 @@ function createRepositories() {
     validationRequestsRepository: new ValidationRequestsRepository(),
     commissionRecordsRepository: new CommissionRecordsRepository(),
     subscriptionPlansRepository: new SubscriptionPlansRepository(),
+    subscriptionPlanAuditLogsRepository: new SubscriptionPlanAuditLogsRepository(),
     userSubscriptionsRepository: new UserSubscriptionsRepository(),
     notificationsRepository: new NotificationsRepository(),
     usageTrackingRepository: new UsageTrackingRepository(),
@@ -39,6 +41,7 @@ module.exports = {
   ValidationRequestsRepository,
   CommissionRecordsRepository,
   SubscriptionPlansRepository,
+  SubscriptionPlanAuditLogsRepository,
   UserSubscriptionsRepository,
   NotificationsRepository,
   UsageTrackingRepository,

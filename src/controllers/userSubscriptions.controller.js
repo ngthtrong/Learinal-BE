@@ -121,7 +121,8 @@ module.exports = {
       const { 
         userSubscriptionsService, 
         usageTrackingRepository,
-        addonPackagesService 
+        addonPackagesService,
+        documentsRepository
       } = req.app.locals;
       
       const subscription = await userSubscriptionsService.getActiveSubscription(req.user.id);
@@ -136,8 +137,13 @@ module.exports = {
             maxValidationRequests: 0,
             addonTestGenerations: 0,
             addonValidationRequests: 0,
+            addonDocumentUploads: 0,
             addonPurchasedTestGenerations: 0,
             addonPurchasedValidationRequests: 0,
+            addonPurchasedDocumentUploads: 0,
+            usedTotalDocuments: 0,
+            maxTotalDocuments: 0,
+            maxDocumentsPerSubject: 0,
             billingCycleStart: null,
             hasActiveSubscription: false
           }
@@ -149,21 +155,26 @@ module.exports = {
       const billingCycleStart = getBillingCycleStart(subscriptionStartDate);
 
       // Đếm số lượt đã dùng trong chu kỳ này
-      const [usedTestGenerations, usedValidationRequests] = await Promise.all([
+      const [usedTestGenerations, usedValidationRequests, usedTotalDocuments] = await Promise.all([
         usageTrackingRepository.countActions(req.user.id, "question_set_generation", billingCycleStart),
-        usageTrackingRepository.countActions(req.user.id, "validation_request", billingCycleStart)
+        usageTrackingRepository.countActions(req.user.id, "validation_request", billingCycleStart),
+        usageTrackingRepository.countActions(req.user.id, "document_upload", billingCycleStart)
       ]);
 
       // Lấy giới hạn từ subscription
       const entitlements = subscription.entitlementsSnapshot || subscription.plan.entitlements || {};
       const maxTestGenerations = entitlements.maxMonthlyTestGenerations ?? 0;
       const maxValidationRequests = entitlements.maxValidationRequests ?? 0;
+      const maxTotalDocuments = entitlements.maxTotalDocuments ?? 0;
+      const maxDocumentsPerSubject = entitlements.maxDocumentsPerSubject ?? 0;
 
       // Lấy quota từ addon
       let addonTestGenerations = 0;       // Số lượt còn lại (remaining)
       let addonValidationRequests = 0;
+      let addonDocumentUploads = 0;
       let addonPurchasedTestGenerations = 0;   // Số lượt đã mua từ đầu (purchased)
       let addonPurchasedValidationRequests = 0;
+      let addonPurchasedDocumentUploads = 0;
       
       if (addonPackagesService) {
         const [addonQuota, addonPurchased] = await Promise.all([
@@ -172,8 +183,10 @@ module.exports = {
         ]);
         addonTestGenerations = addonQuota.totalTestGenerations || 0;
         addonValidationRequests = addonQuota.totalValidationRequests || 0;
+        addonDocumentUploads = addonQuota.totalDocumentUploads || 0;
         addonPurchasedTestGenerations = addonPurchased.totalTestGenerations || 0;
         addonPurchasedValidationRequests = addonPurchased.totalValidationRequests || 0;
+        addonPurchasedDocumentUploads = addonPurchased.totalDocumentUploads || 0;
       }
 
       res.json({
@@ -185,8 +198,13 @@ module.exports = {
           maxValidationRequests,
           addonTestGenerations,           // Còn lại từ addon
           addonValidationRequests,
+          addonDocumentUploads,
           addonPurchasedTestGenerations,  // Đã mua từ addon (không đổi)
           addonPurchasedValidationRequests,
+          addonPurchasedDocumentUploads,
+          usedTotalDocuments,
+          maxTotalDocuments,
+          maxDocumentsPerSubject,
           billingCycleStart,
           hasActiveSubscription: true
         }
