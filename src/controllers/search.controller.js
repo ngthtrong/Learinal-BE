@@ -31,12 +31,12 @@ module.exports = {
   },
 
   /**
-   * GET /search/question-sets?status=Published&difficulty=Hiểu&startDate=...
+   * GET /search/question-sets?status=Published&difficulty=Hiểu&startDate=...&creatorRole=Expert
    * Advanced filtering for question sets
    */
   filterQuestionSets: async (req, res, next) => {
     try {
-      const { status, difficulty, startDate, endDate, creatorId, isShared, page, pageSize } = req.query;
+      const { status, difficulty, startDate, endDate, creatorId, isShared, creatorRole, page, pageSize } = req.query;
 
       const results = await searchService.filterQuestionSets(
         {
@@ -46,6 +46,7 @@ module.exports = {
           endDate,
           creatorId,
           isShared,
+          creatorRole,
         },
         {
           page: parseInt(page) || 1,

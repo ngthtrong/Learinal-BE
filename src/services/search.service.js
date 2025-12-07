@@ -176,6 +176,23 @@ class SearchService {
       }
     }
 
+    // Filter by creator role (for filtering expert-created sets)
+    let userRoleFilter = null;
+    if (filters.creatorRole) {
+      // Get users with the specified role
+      const usersWithRole = await User.find({ role: filters.creatorRole }).select("_id").lean();
+      const userIds = usersWithRole.map((u) => u._id);
+      userRoleFilter = { userId: { $in: userIds } };
+      
+      // Merge with existing query
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, userRoleFilter];
+        delete query.$or;
+      } else {
+        Object.assign(query, userRoleFilter);
+      }
+    }
+
     const [results, total] = await Promise.all([
       QuestionSet.find(query)
         .skip(skip)

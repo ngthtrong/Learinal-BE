@@ -7,6 +7,7 @@ const { createRepositories } = require('./repositories');
 const SubscriptionPlansService = require('./services/subscriptionPlans.service');
 const UserSubscriptionsService = require('./services/userSubscriptions.service');
 const AddonPackagesService = require('./services/addonPackages.service');
+const NotificationsService = require('./services/notifications.service');
 
 function initializeServices(app) {
   // Create all repositories
@@ -32,10 +33,15 @@ function initializeServices(app) {
     userSubscriptionsRepository: repositories.userSubscriptionsRepository,
   });
 
+  const notificationsService = new NotificationsService({
+    notificationsRepository: repositories.notificationsRepository,
+  });
+
   // Inject services into app.locals
   app.locals.subscriptionPlansService = subscriptionPlansService;
   app.locals.userSubscriptionsService = userSubscriptionsService;
   app.locals.addonPackagesService = addonPackagesService;
+  app.locals.notificationsService = notificationsService;
 }
 
 module.exports = { initializeServices };

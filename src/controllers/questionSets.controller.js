@@ -241,9 +241,17 @@ module.exports = {
         if (ownerUser && ownerUser.role === "Expert") {
           // Check if current user has Premium subscription
           const { userSubscriptionsService } = req.app.locals;
+          console.log('🔍 Checking premium for user:', user.id, 'email:', user.email);
           const activeSubscription = await userSubscriptionsService.getActiveSubscription(user.id);
+          console.log('✅ Active subscription:', activeSubscription);
+          console.log('📋 Subscription details:', activeSubscription ? {
+            status: activeSubscription.status,
+            planName: activeSubscription.plan?.name,
+            planId: activeSubscription.planId
+          } : 'NULL');
           
           if (!activeSubscription) {
+            console.log('❌ No active subscription - blocking access');
             // Allow viewing but restrict quiz access
             return res.status(200).json({
               ...mapId(item),
@@ -251,6 +259,8 @@ module.exports = {
               _message: "Bạn cần nâng cấp lên gói Premium để làm bài tập này"
             });
           }
+          
+          console.log('✅ Has premium subscription - allowing access');
         }
       }
 
