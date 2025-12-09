@@ -11,7 +11,7 @@ class LLMClient {
   }
 
   get endpoint() {
-    const model = this.config.model || "gemini-1.5-flash";
+    const model = this.config.model || "gemini-2.5-flash";
     const base = "https://generativelanguage.googleapis.com/v1";
     const path = model.startsWith("models/")
       ? `${model}:generateContent`
@@ -48,7 +48,7 @@ class LLMClient {
   async generateQuestions(input) {
     const { 
       contextText = "", 
-      _numQuestions = 10, 
+      numQuestions = 10, 
       difficulty = "Understand", 
       topics = [],
       difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }
@@ -70,6 +70,9 @@ class LLMClient {
     let distributionInstructions = "";
     let topicInstructions = "";
     
+    // Calculate total questions from distribution or use numQuestions
+    let totalQuestionsToGenerate = numQuestions;
+    
     // Handle difficulty distribution
     if (difficultyDistribution && typeof difficultyDistribution === 'object') {
       const distribParts = [];
@@ -81,7 +84,8 @@ class LLMClient {
         }
       }
       if (distribParts.length > 0 && totalDist > 0) {
-        distributionInstructions = `\nPhân bố độ khó: ${distribParts.join(", ")}. Tổng cộng ${totalDist} câu hỏi.`;
+        totalQuestionsToGenerate = totalDist;
+        distributionInstructions = `\nPhân bố độ khó: ${distribParts.join(", ")}. Tổng cộng CHÍNH XÁC ${totalDist} câu hỏi.`;
       }
     }
     
@@ -106,10 +110,18 @@ class LLMClient {
       }
     }
 
+    // Build the quantity instruction
+    const quantityInstruction = distributionInstructions 
+      ? distributionInstructions 
+      : `\n**QUAN TRỌNG: Tạo CHÍNH XÁC ${totalQuestionsToGenerate} câu hỏi. Không nhiều hơn, không ít hơn.**`;
+
     const prompt = `You are a learning assistant. Using ONLY the information from the provided context, generate multiple-choice questions (MCQs). Do not invent facts beyond the context.
+
+**CRITICAL REQUIREMENT: You MUST generate EXACTLY ${totalQuestionsToGenerate} questions. Not more, not less.**
+
 Context (may be empty):\n${safeContext}\n
 Topics (optional): ${topics.join(", ")}
-${topicInstructions}${distributionInstructions}
+${topicInstructions}${quantityInstruction}
 
 Return ONLY valid JSON (no markdown fences, no extra text) with shape: 
 { 
@@ -133,7 +145,9 @@ Difficulty levels explained:
 - "Analyze": Break down and examine components, relationships (Bloom's Taxonomy Level 4)
 
 ${distributionInstructions ? 'Follow the difficulty distribution specified above exactly.' : `Ensure difficultyLevel is set to "${difficulty}" for all questions unless the context strongly suggests otherwise.`}
-${topicDistribution ? 'Follow the topic distribution specified above exactly.' : ''}`;
+${topicDistribution ? 'Follow the topic distribution specified above exactly.' : ''}
+
+**REMINDER: The questions array MUST contain EXACTLY ${totalQuestionsToGenerate} question objects.**`;
 
     if (String(process.env.LLM_DEBUG).toLowerCase() === "true" || process.env.LLM_DEBUG === "1") {
       // Log a trimmed prompt for debugging
@@ -178,19 +192,19 @@ Content:\n${safe}`;
     }
     
     const safe = String(text).slice(0, 20000);
-    const prompt = `Analyze the following document content and generate a hierarchical table of contents (TOC). 
+    const prompt = `Analyze the following document content and generate a hierarchical table of contents (TOC).
 Extract the main topics, chapters, sections, and subsections based on the document structure.
 
-Return ONLY valid JSON (no markdown fences, no extra text) with shape:
+STRICT OUTPUT FORMAT - Return ONLY valid JSON with this EXACT structure:
 {
   "tableOfContents": [
     {
-      "topicId": string (generate unique ID like "topic-1", "topic-2", etc.),
-      "topicName": string (the topic/chapter/section name),
+      "topicId": "topic-1",
+      "topicName": "Tên chương/phần",
       "childTopics": [
         {
-          "topicId": string,
-          "topicName": string,
+          "topicId": "topic-1-1",
+          "topicName": "Tên mục con",
           "childTopics": []
         }
       ]
@@ -198,14 +212,19 @@ Return ONLY valid JSON (no markdown fences, no extra text) with shape:
   ]
 }
 
-Guidelines:
-- Generate unique topicId for each topic (e.g., "topic-1", "topic-1-1", "topic-1-2")
-- Keep topicName concise and descriptive
-- Support nested structure with childTopics array
-- If no clear structure found, create a simple flat list of main topics
-- Maximum 3 levels of nesting recommended
+MANDATORY RULES:
+1. "topicId" MUST be a string starting with "topic-" followed by numbers (e.g., "topic-1", "topic-1-1", "topic-2-3-1")
+2. "topicName" MUST be a non-empty string (the topic/chapter/section name)
+3. "childTopics" MUST be an array (can be empty [] if no children)
+4. Every object MUST have all 3 fields: topicId, topicName, childTopics
+5. Maximum 3 levels of nesting
+6. NO additional fields, NO markdown, NO explanation text
 
-Content:\n${safe}`;
+Example valid output:
+{"tableOfContents":[{"topicId":"topic-1","topicName":"Introduction","childTopics":[{"topicId":"topic-1-1","topicName":"Overview","childTopics":[]}]},{"topicId":"topic-2","topicName":"Main Content","childTopics":[]}]}
+
+Content to analyze:
+${safe}`;
 
     if (String(process.env.LLM_DEBUG).toLowerCase() === "true" || process.env.LLM_DEBUG === "1") {
       const toLog = prompt.length > 1500 ? `${prompt.slice(0, 1500)}... [trimmed]` : prompt;
@@ -213,7 +232,10 @@ Content:\n${safe}`;
     }
 
     const data = await this.callGeminiJSON(prompt);
-    const tableOfContents = Array.isArray(data?.tableOfContents) ? data.tableOfContents : [];
+    const rawTOC = Array.isArray(data?.tableOfContents) ? data.tableOfContents : [];
+    
+    // Validate and normalize TOC to ensure correct format
+    const tableOfContents = LLMClient.normalizeTOC(rawTOC, "topic");
     return { tableOfContents };
   }
 
@@ -259,33 +281,25 @@ This should be a FLAT LIST (only 1 level - no nested childTopics) of main chapte
 Documents information:
 ${safe}
 
-Return ONLY valid JSON (no markdown fences, no extra text) with shape:
+STRICT OUTPUT FORMAT - Return ONLY valid JSON with this EXACT structure:
 {
   "tableOfContents": [
-    {
-      "topicId": string (generate unique ID like "chapter-1", "chapter-2", etc.),
-      "topicName": string (the main chapter/topic name),
-      "childTopics": []
-    }
+    {"topicId": "chapter-1", "topicName": "Tên chương", "childTopics": []},
+    {"topicId": "chapter-2", "topicName": "Tên chương", "childTopics": []}
   ]
 }
 
-Guidelines:
-- ONLY 1 LEVEL - NO nested childTopics (keep childTopics as empty array [])
-- Generate 5-15 main chapters/topics that summarize the entire subject
-- Use "chapter-1", "chapter-2", etc. for topicId
-- Keep topicName concise and descriptive (e.g., "Chương 1: Giới thiệu", "Chapter 2: Data Structures")
-- Organize logically from foundational to advanced topics
-- If documents cover similar topics, merge them into one chapter
+MANDATORY RULES:
+1. "topicId" MUST be a string: "chapter-1", "chapter-2", "chapter-3", etc.
+2. "topicName" MUST be a non-empty string describing the chapter
+3. "childTopics" MUST be an empty array []
+4. Every object MUST have exactly 3 fields: topicId, topicName, childTopics
+5. Generate 5-15 main chapters that cover the entire subject
+6. NO nested structures, NO additional fields, NO markdown, NO explanation text
+7. Organize logically from foundational to advanced topics
 
-Example output:
-{
-  "tableOfContents": [
-    {"topicId": "chapter-1", "topicName": "Chương 1: Giới thiệu cơ bản", "childTopics": []},
-    {"topicId": "chapter-2", "topicName": "Chương 2: Cấu trúc dữ liệu", "childTopics": []},
-    {"topicId": "chapter-3", "topicName": "Chương 3: Thuật toán", "childTopics": []}
-  ]
-}`;
+Example valid output:
+{"tableOfContents":[{"topicId":"chapter-1","topicName":"Giới thiệu cơ bản","childTopics":[]},{"topicId":"chapter-2","topicName":"Cấu trúc dữ liệu","childTopics":[]},{"topicId":"chapter-3","topicName":"Thuật toán","childTopics":[]}]}`;
 
     if (String(process.env.LLM_DEBUG).toLowerCase() === "true" || process.env.LLM_DEBUG === "1") {
       const toLog = prompt.length > 1500 ? `${prompt.slice(0, 1500)}... [trimmed]` : prompt;
@@ -293,16 +307,77 @@ Example output:
     }
 
     const data = await this.callGeminiJSON(prompt);
-    const tableOfContents = Array.isArray(data?.tableOfContents) ? data.tableOfContents : [];
+    const rawTOC = Array.isArray(data?.tableOfContents) ? data.tableOfContents : [];
     
-    // Ensure all items have empty childTopics array (enforce flat structure)
-    const flatTOC = tableOfContents.map(item => ({
-      topicId: item.topicId || `chapter-${Date.now()}`,
-      topicName: item.topicName || "Unknown Chapter",
-      childTopics: []
-    }));
+    // Validate and normalize TOC to ensure correct flat format
+    const tableOfContents = LLMClient.normalizeTOC(rawTOC, "chapter", true);
     
-    return { tableOfContents: flatTOC };
+    return { tableOfContents };
+  }
+
+  /**
+   * Normalize and validate TOC items to ensure correct format
+   * @param {Array} items - Raw TOC items from LLM
+   * @param {string} prefix - ID prefix ("topic" or "chapter")
+   * @param {boolean} forceFlat - If true, flatten all nested items
+   * @param {string} parentId - Parent ID for nested items
+   * @returns {Array} Normalized TOC items
+   */
+  static normalizeTOC(items, prefix = "topic", forceFlat = false, parentId = "") {
+    if (!Array.isArray(items)) return [];
+    
+    const result = [];
+    let index = 1;
+    
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      
+      // Generate proper topicId if missing or invalid
+      const baseId = parentId ? `${parentId}-${index}` : `${prefix}-${index}`;
+      let topicId = item.topicId;
+      
+      // Validate topicId format
+      if (!topicId || typeof topicId !== 'string' || !topicId.match(/^(topic|chapter)-[\d-]+$/)) {
+        topicId = baseId;
+      }
+      
+      // Validate and clean topicName
+      let topicName = item.topicName || item.name || item.title || "";
+      if (typeof topicName !== 'string') {
+        topicName = String(topicName);
+      }
+      topicName = topicName.trim();
+      
+      // Skip items without a name
+      if (!topicName) {
+        continue;
+      }
+      
+      // Handle childTopics
+      let childTopics = [];
+      if (!forceFlat && Array.isArray(item.childTopics) && item.childTopics.length > 0) {
+        childTopics = LLMClient.normalizeTOC(item.childTopics, prefix, false, topicId);
+      }
+      
+      result.push({
+        topicId,
+        topicName,
+        childTopics
+      });
+      
+      // If forceFlat is true and there are nested items, flatten them
+      if (forceFlat && Array.isArray(item.childTopics) && item.childTopics.length > 0) {
+        const flattenedChildren = LLMClient.normalizeTOC(item.childTopics, prefix, true, "");
+        for (const child of flattenedChildren) {
+          child.topicId = `${prefix}-${result.length + 1}`;
+          result.push(child);
+        }
+      }
+      
+      index++;
+    }
+    
+    return result;
   }
 
   // Utility: parse JSON even if model wraps in ```json fences or prefixes/suffixes

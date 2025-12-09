@@ -19,6 +19,39 @@ const genSchema = Joi.object({
   }),
 }).unknown(true);
 
+const createManualSchema = Joi.object({
+  body: Joi.object({
+    title: Joi.string().min(1).max(200).required(),
+    description: Joi.string().max(1000).optional(),
+    subjectId: Joi.string().optional(),
+    questions: Joi.array()
+      .items(
+        Joi.object({
+          questionText: Joi.string().required(),
+          options: Joi.array().items(Joi.string()).min(2).max(6).required(),
+          correctAnswerIndex: Joi.number().integer().min(0).required(),
+          difficultyLevel: Joi.string().valid("Easy", "Medium", "Hard").optional(),
+          explanation: Joi.string().optional(),
+          topicTags: Joi.array().items(Joi.string()).optional(),
+        })
+      )
+      .min(1)
+      .max(100)
+      .required(),
+  }),
+}).unknown(true);
+
+const generateFromDocSchema = Joi.object({
+  body: Joi.object({
+    documentId: Joi.string().required(),
+    title: Joi.string().min(1).max(200).required(),
+    description: Joi.string().max(1000).optional(),
+    numQuestions: Joi.number().integer().min(1).max(50).default(10),
+    difficulty: Joi.string().valid("Easy", "Medium", "Hard").default("Medium"),
+    questionType: Joi.string().valid("multiple-choice", "true-false").default("multiple-choice"),
+  }),
+}).unknown(true);
+
 const quizAttemptsQuerySchema = Joi.object({
   params: Joi.object({ questionSetId: Joi.string().required() }),
   query: Joi.object({
@@ -30,6 +63,21 @@ const quizAttemptsQuerySchema = Joi.object({
 
 // Cache GET requests (10 minutes TTL)
 router.get("/", authenticateJWT, cacheResponse({ ttl: 600 }), controller.list);
+router.post(
+  "/create",
+  authenticateJWT,
+  inputValidation(createManualSchema),
+  controller.createManual
+);
+router.post(
+  "/generate-from-document",
+  expensiveLimiter,
+  authenticateJWT,
+  checkQuestionGenerationLimit,
+  idempotencyKey,
+  inputValidation(generateFromDocSchema),
+  controller.generateFromDocument
+);
 router.post(
   "/generate",
   expensiveLimiter,

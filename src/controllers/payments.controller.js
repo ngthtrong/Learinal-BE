@@ -174,4 +174,18 @@ module.exports = {
       return next(err);
     }
   },
+
+  // Admin/ops trigger: scan recent transactions for addon packages
+  scanSepayAddonTransactions: async (req, res, next) => {
+    try {
+      const limit = Number(req.query.limit || req.body?.limit || 50);
+      const accountNumber = req.query.account_number || req.body?.account_number || undefined;
+      const debug = String(req.query.debug || req.body?.debug || "false").toLowerCase() === "true";
+      const service = new SepayScanService();
+      const result = await service.scanRecentAddons({ accountNumber, limit, debug });
+      return res.status(200).json(result);
+    } catch (err) {
+      return next(err);
+    }
+  },
 };

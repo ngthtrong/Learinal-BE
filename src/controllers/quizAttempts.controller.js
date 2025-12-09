@@ -179,7 +179,7 @@ module.exports = {
       console.log('=== END DEBUG ===');
 
       // Emit real-time notification for quiz completion
-      notificationService.emitQuizCompleted(user.id, {
+      await notificationService.emitQuizCompleted(user.id, {
         _id: updated._id || updated.id,
         questionSet: attempt.setId,
         score,

@@ -2,6 +2,7 @@ const DocumentsRepository = require("../repositories/documents.repository");
 const SubjectsRepository = require("../repositories/subjects.repository");
 const { llm } = require("../config");
 const LLMClient = require("../adapters/llmClient");
+const notificationService = require("../services/notification.service");
 const logger = require("../utils/logger");
 
 module.exports = async function contentSummary(payload) {
@@ -75,6 +76,21 @@ module.exports = async function contentSummary(payload) {
     
     logger.info({ documentId, hasTOC: !!updateData.tableOfContents }, "[summary] document completed");
 
+    // Send notification after document is completed
+    const finalDoc = await docsRepo.findById(documentId);
+    logger.info({ 
+      documentId, 
+      ownerId: finalDoc?.ownerId, 
+      hasOwnerId: !!finalDoc?.ownerId 
+    }, "[summary] checking ownerId for notification");
+    
+    if (finalDoc && finalDoc.ownerId) {
+      await notificationService.emitDocumentProcessed(finalDoc.ownerId.toString(), finalDoc);
+      logger.info({ documentId, userId: finalDoc.ownerId }, "[summary] notification sent");
+    } else {
+      logger.warn({ documentId, doc: finalDoc }, "[summary] no ownerId found, cannot send notification");
+    }
+
     // After document is completed, update subject's table of contents
     if (doc.subjectId) {
       try {
@@ -92,6 +108,21 @@ module.exports = async function contentSummary(payload) {
   } catch (e) {
     logger.error({ documentId, err: e?.message || e, stack: e?.stack }, "[summary] failed");
     await docsRepo.updateById(documentId, { $set: { status: "Error" } }, { new: true });
+    
+    // Send error notification
+    const failedDoc = await docsRepo.findById(documentId);
+    logger.info({ 
+      documentId, 
+      ownerId: failedDoc?.ownerId, 
+      hasOwnerId: !!failedDoc?.ownerId 
+    }, "[summary] checking ownerId for error notification");
+    
+    if (failedDoc && failedDoc.ownerId) {
+      await notificationService.emitDocumentProcessed(failedDoc.ownerId.toString(), failedDoc);
+      logger.info({ documentId, userId: failedDoc.ownerId }, "[summary] error notification sent");
+    } else {
+      logger.warn({ documentId, doc: failedDoc }, "[summary] no ownerId found, cannot send error notification");
+    }
   }
 };
 

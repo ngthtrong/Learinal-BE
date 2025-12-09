@@ -1,5 +1,6 @@
 const Sentry = require("@sentry/node");
-const { ProfilingIntegration } = require("@sentry/profiling-node");
+// Temporarily disabled due to Node.js 22 compatibility issues
+// const { ProfilingIntegration } = require("@sentry/profiling-node");
 const env = require("./env");
 
 /**
@@ -27,9 +28,9 @@ function initSentry(app) {
     // Performance Monitoring
     tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0, // 10% in prod, 100% in dev
 
-    // Profiling
-    profilesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
-    integrations: [new ProfilingIntegration()],
+    // Profiling - disabled due to Node.js 22 compatibility
+    // profilesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
+    // integrations: [new ProfilingIntegration()],
 
     // Filter sensitive data
     beforeSend(event, _hint) {

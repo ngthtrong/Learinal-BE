@@ -56,6 +56,7 @@
 | **Ứng dụng hỗ trợ học tập, luyện thi** | 15/09/2025 | Khởi tạo tài liệu                                                                                                                                                                                                                      | **v0.1.0** |
 | **Learinal**                                  | 27/09/2025 | Thêm tên dự án và hoàn thành tài liệu                                                                                                                                                                                             | **v0.1.1** |
 | **Learinal**                                  | 22/10/2025 | \[BỔ SUNG\] Cập nhật theo yêu cầu: Thêm mức độ câu hỏi, công thức tính điểm (trọng số theo mức độ), tóm tắt cho từng tài liệu, mô hình nhiều gói đăng ký và công thức tính hoa hồng cho Chuyên gia. | **v0.2**   |
+| **Learinal**                                  | 27/11/2025 | \[CẬP NHẬT\] Cập nhật stack công nghệ (Node.js/Express thay Nest.js), cập nhật sơ đồ trích dẫn từ file learinal-diagrams.puml, bổ sung mô hình Commission Hybrid với Fixed + Bonus. | **v0.3**   |
 
 ---
 
@@ -147,7 +148,18 @@ Learinal là một sản phẩm phần mềm mới, được định vị như m
 Sản phẩm này ra đời để giải quyết nhu cầu cá nhân hóa việc học, đặc biệt cho các môn học mang nặng tính lý thuyết hoặc các môn chuyên ngành có nguồn tài liệu đặc thù. Nó không phải là phiên bản kế thừa hay thay thế cho bất kỳ hệ thống nào trước đó.
 Sơ đồ ngữ cảnh của hệ thống:
 
-![][image1]
+> **Hình 2.1**: Sơ đồ ngữ cảnh hệ thống Learinal
+> *Xem sơ đồ `@startuml context-diagram` trong file `docs/report/diagrams/learinal-diagrams.puml`*
+
+Sơ đồ ngữ cảnh mô tả các thực thể bên ngoài tương tác với hệ thống Learinal:
+- **Người học (Learner)**: Tải tài liệu, sinh đề, làm bài thi
+- **Chuyên gia (Expert)**: Kiểm duyệt bộ đề, tạo nội dung premium
+- **Quản trị viên (Admin)**: Quản lý người dùng, gói dịch vụ, tài chính
+- **Google Gemini API**: Dịch vụ AI/LLM để phân tích tài liệu và sinh câu hỏi
+- **Email Service (SendGrid/SES)**: Gửi email xác thực và thông báo
+- **Object Storage (S3)**: Lưu trữ tài liệu tải lên
+- **Google OAuth 2.0**: Xác thực người dùng qua tài khoản Google
+- **SePay**: Xử lý thanh toán gói đăng ký
 
 ## **2.2 Phân loại và đặc điểm người dùng**
 
@@ -180,18 +192,20 @@ Phần này mô tả môi trường kỹ thuật mà hệ thống website Learin
 
 **Phía Máy chủ (Server-Side):**
 
-- Môi trường triển khai: Hệ thống sẽ được triển khai trên một nền tảng dịch vụ đám mây \<**TBC** Vercel\> để đảm bảo tính sẵn sàng và khả năng mở rộng.
-- Máy chủ web (Web Server): \<**TBC** Render\>.
-- Nền tảng/Ngôn ngữ phía máy chủ: \<**TBC** Nodejs với Nest.js\>.
-- Cơ sở dữ liệu: Sử dụng phi quan hệ (NoSQL) MongoDB.
-- Dịch vụ AI/ML: Hệ thống sẽ tích hợp và tương tác với một dịch vụ **Mô hình Ngôn ngữ Lớn (LLM)** của bên thứ ba thông qua API \<**TBC** Google Gemini API\>.
+- Môi trường triển khai: Hệ thống sẽ được triển khai trên nền tảng dịch vụ đám mây **Docker Container** để đảm bảo tính sẵn sàng và khả năng mở rộng.
+- Máy chủ web (Web Server): **Node.js** với **Express 5.1.0**.
+- Nền tảng/Ngôn ngữ phía máy chủ: **Node.js ≥18** với Express framework, sử dụng kiến trúc phân tầng (Layered Architecture).
+- Cơ sở dữ liệu: **MongoDB 6.20.0** với **Mongoose 8.19.2** ODM.
+- Message Queue: **Redis 4.6.14** với **BullMQ 5.20.1** cho xử lý tác vụ nền.
+- Real-time: **Socket.io 4.8.1** cho thông báo real-time.
+- Dịch vụ AI/ML: Hệ thống tích hợp với **Google Gemini API** (@google/generative-ai 0.24.0) thông qua Adapter pattern để dễ dàng thay thế.
 
 ## **2.4 Các ràng buộc về thiết kế và triển khai**
 
 Phần này mô tả các yếu tố ràng buộc, giới hạn các lựa chọn cho đội ngũ phát triển khi thiết kế và xây dựng hệ thống.
 
 - **Responsive Design**: Giao diện người dùng của website phải có khả năng tự động điều chỉnh để hiển thị tốt trên nhiều kích thước màn hình khác nhau, từ máy tính để bàn (desktop) đến máy tính bảng (tablet) và điện thoại di động (mobile).
-- **Technology Stack**: \<**TBC** ReactJS  cho frontend, Nodejs  với Nest.js cho backend).
+- **Technology Stack**: **React 19** với **TailwindCSS** cho frontend, **Node.js** với **Express 5.x** cho backend, **MongoDB** với **Mongoose** cho database, **Redis** với **BullMQ** cho message queue.
 - **Tương thích trình duyệt**: Hệ thống phải đảm bảo hoạt động ổn định và nhất quán trên các trình duyệt đã được liệt kê trong mục 2.3.
 - **Độ trễ (Latency)**: Quá trình xử lý tài liệu và tạo đề thi phụ thuộc vào thời gian phản hồi của API từ dịch vụ LLM. Hệ thống phải được thiết kế để xử lý các tác vụ này một cách bất đồng bộ (ví dụ: sử dụng hàng đợi xử lý \- message queue, thông báo cho người dùng khi hoàn thành) để không làm treo giao diện người dùng.
 - **Chi phí (Cost):** Mỗi lệnh gọi đến API của LLM đều tốn chi phí, được tính dựa trên số lượng token (dữ liệu) đầu vào và đầu ra. Thiết kế hệ thống phải tối ưu hóa số lượng và độ lớn của các lệnh gọi API để kiểm soát chi phí vận hành.
@@ -231,7 +245,15 @@ Phần này mô tả chi tiết các yêu cầu chức năng của sản phẩm.
 
 ## **Sơ đồ Use Case tổng quan**
 
-*![][image2]*
+> **Hình 3.1**: Sơ đồ Use Case - Người học (Learner)
+> *Xem sơ đồ `@startuml usecase-learner` trong file `docs/report/diagrams/learinal-diagrams.puml`*
+
+> **Hình 3.2**: Sơ đồ Use Case - Chuyên gia (Expert)
+> *Xem sơ đồ `@startuml usecase-expert` trong file `docs/report/diagrams/learinal-diagrams.puml`*
+
+> **Hình 3.3**: Sơ đồ Use Case - Quản trị viên (Admin)
+> *Xem sơ đồ `@startuml usecase-admin` trong file `docs/report/diagrams/learinal-diagrams.puml`*
+
 -----------
 
 ## **Các tính năng dành cho Người học**
@@ -597,7 +619,8 @@ Bao gồm các chức năng hệ thống dùng chung, không phải là mục ti
 
 Phần này mô tả các yêu cầu liên quan đến việc cấu trúc, lưu trữ và quản lý dữ liệu trong hệ thống Learinal. Do hệ thống sử dụng cơ sở dữ liệu NoSQL (MongoDB), mô hình dữ liệu sẽ được mô tả dưới dạng các "bộ sưu tập" (collections) và "tài liệu" (documents).
 
-![][image3]
+> **Hình 4.1**: Sơ đồ Entity-Relationship Diagram (ERD)
+> *Xem sơ đồ `@startuml erd-diagram` trong file `docs/report/diagrams/learinal-diagrams.puml`*
 
 ## **4.1 Mô hình dữ liệu logic**
 
@@ -735,34 +758,69 @@ Mô hình dữ liệu logic sẽ bao gồm các thực thể chính sau đây đ
 
 4) Tính tương thích với UC-005: Trình tạo đề cho phép cấu hình tỷ lệ phân bổ số câu theo mức độ; điểm số vẫn được chuẩn hóa theo công thức trên để đảm bảo công bằng giữa các đề có cấu trúc khác nhau.
 
-### **4.1.2. Công thức tính hoa hồng cho Chuyên gia**
+### **4.1.2. Công thức tính hoa hồng cho Chuyên gia - Mô hình Hybrid (Fixed + Bonus)**
 
 Mục tiêu: Minh bạch, dễ kiểm chứng, hỗ trợ cả nội dung do Chuyên gia tạo (Published) và nội dung do Người học tạo nhưng đã được Chuyên gia xác thực (Validated).
 
-Định nghĩa:
+#### **Phần 1: Fixed Amount (Thu nhập cố định theo lượt làm bài)**
 
-- `NetPremiumRevenue_m`: Doanh thu thực nhận từ các gói đăng ký trả phí trong tháng m sau khi trừ hoàn tiền, chiết khấu, thuế/ phí cổng thanh toán.
-- `CommissionPoolRate`: Tỷ lệ % doanh thu dành chi trả hoa hồng cho toàn bộ Chuyên gia trong tháng (mặc định 30%, cấu hình được).
-- `CommissionPool_m = NetPremiumRevenue_m * CommissionPoolRate`.
-- `PremiumAttempts_m`: Tổng số lượt làm bài (chỉ người dùng thuộc gói trả phí) trên các bộ đề đủ điều kiện tính hoa hồng trong tháng m.
-- `PerAttemptUnit_m = CommissionPool_m / max(1, PremiumAttempts_m)` (đơn giá một lượt làm bài).
-- Loại nội dung của bộ đề: `type(set) ∈ {PublishedByExpert, ValidatedByExpert}` với hệ số:
-  - `Rate_Published` (mặc định 0.40), `Rate_Validated` (mặc định 0.20) — cấu hình bởi Admin.
+Mỗi khi người dùng Premium hoàn thành một bài thi trên bộ đề đủ điều kiện, Expert nhận hoa hồng cố định:
 
-Quy tắc tính cho một lượt làm bài `attempt` trên bộ đề `set` của Chuyên gia `E` trong tháng m:
+| Loại bộ đề | Fixed Amount (VND) | Mô tả |
+|-----------|-------------------|----------|
+| **Published** | 300 | Bộ đề do Expert tự tạo và được xuất bản |
+| **Validated** | 150 | Bộ đề do Learner tạo, Expert kiểm duyệt |
 
-- Nếu `type(set) = PublishedByExpert` và `author(set) = E` ⇒ `commission(attempt) = PerAttemptUnit_m * Rate_Published`.
-- Nếu `type(set) = ValidatedByExpert` và `validator(set) = E` ⇒ `commission(attempt) = PerAttemptUnit_m * Rate_Validated` trong thời hạn hưởng quyền `T` ngày kể từ khi được xác thực (mặc định T = 180 ngày, cấu hình được).
-- Nếu nhiều Chuyên gia cùng tham gia xác thực (đồng kiểm), chia đều theo tỷ lệ đóng góp (nếu có trường `contributionRatio` thì phân chia theo tỷ lệ này, mặc định chia đều).
+**Công thức:**
+```
+FixedCommission = FixedAmount(type) × isPremiumAttempt
+```
+Trong đó: `isPremiumAttempt = 1` nếu người làm bài có gói Premium, ngược lại = 0
 
-Hoa hồng tháng của Chuyên gia `E`:
-`Commission_E_m = Σ commission(attempt_k)` với mọi attempt đủ điều kiện trong tháng m. Trạng thái ghi nhận: tạo `CommissionRecords` ở thời điểm nộp bài (UC-006) hoặc khi đối soát cuối tháng.
+#### **Phần 2: Bonus Pool (Đối soát cuối tháng)**
 
-Ngoại lệ và xử lý biên:
+**Định nghĩa:**
+- `NetPremiumRevenue_m`: Doanh thu thực nhận từ các gói đăng ký trả phí trong tháng m sau khi trừ hoàn tiền, chiết khấu, thuế/phí cổng thanh toán.
+- `BonusPoolRate`: Tỷ lệ % doanh thu dành chi trả bonus (mặc định 10%, cấu hình được).
+- `BonusPool_m = NetPremiumRevenue_m × BonusPoolRate`
+- `TotalPremiumAttempts_m`: Tổng lượt làm bài của user Premium trong tháng.
 
-- Lượt làm bài bị hủy/hoàn tiền do vi phạm ⇒ không tính hoa hồng (hủy hoặc trừ bút toán).
-- Nếu `PremiumAttempts_m = 0` ⇒ `PerAttemptUnit_m = 0` (không phát sinh hoa hồng); không mang sang tháng sau trừ khi có chính sách riêng.
-- Tất cả thông số (rates, T) đều do Admin cấu hình trong UC-020.
+**Công thức Bonus:**
+```
+PerAttemptBonus_m = BonusPool_m / max(1, TotalPremiumAttempts_m)
+
+ExpertBonus_m = Σ (PerAttemptBonus_m × Weight(type))
+```
+Với:
+- `Weight(Published) = 2.0`
+- `Weight(Validated) = 1.0`
+
+#### **Phần 3: Tổng thu nhập Expert**
+
+```
+TotalCommission_E_m = Σ FixedCommission + ExpertBonus_m
+```
+
+#### **Điều kiện hưởng hoa hồng:**
+
+1. Chỉ tính cho lượt làm bài của user Premium (`isPremiumAttempt = true`)
+2. Bộ đề phải có status `Published` hoặc `Validated`
+3. Với bộ đề `Validated`: Trong thời hạn hưởng quyền T ngày (mặc định T = 180 ngày)
+4. Lượt làm bài phải hoàn thành (`isCompleted = true`)
+
+#### **Ví dụ minh họa:**
+
+**Kịch bản tháng 11:**
+- Doanh thu Premium: 50,000,000 VND
+- BonusPoolRate: 10% → BonusPool = 5,000,000 VND
+- Tổng lượt làm bài Premium: 1000
+- PerAttemptBonus = 5,000,000 / 1000 = 5,000 VND
+
+**Expert A có:**
+- 50 lượt trên bộ đề Published: 50 × 300 = 15,000 VND (Fixed)
+- 100 lượt trên bộ đề Validated: 100 × 150 = 15,000 VND (Fixed)
+- Bonus: (50 × 2.0 + 100 × 1.0) × 5,000 = 200 × 5,000 = 1,000,000 VND
+- **Tổng: 15,000 + 15,000 + 1,000,000 = 1,030,000 VND**
 
 ### **4.1.1. Công thức tính điểm trong số:**
 

@@ -9,6 +9,9 @@ router.use(authenticateJWT);
 // Get current user's active subscription
 router.get('/me', controller.me);
 
+// Get current user's usage stats (lượt đã dùng trong kỳ)
+router.get('/me/usage', controller.getMyUsage);
+
 // Create new subscription (after payment)
 router.post('/', controller.create);
 

@@ -284,44 +284,10 @@ module.exports = async function questionsGenerate(payload) {
       "[questions.generate] completed successfully"
     );
 
-    // Create in-app notification
+    // Emit real-time notification and create persistent notification
     try {
-      const notificationTitle =
-        questions.length < totalQuestions
-          ? "Bộ đề đã được tạo (không đủ số lượng)"
-          : "Bộ đề đã được tạo xong";
-
-      const notificationMessage =
-        questions.length < totalQuestions
-          ? `Bộ đề "${qset.title}" đã được tạo với ${questions?.length || 0}/${totalQuestions} câu hỏi. Hệ thống không thể tạo đủ số lượng yêu cầu do giới hạn nội dung tài liệu hoặc LLM. Bạn có thể thêm tài liệu hoặc thử lại.`
-          : `Bộ đề "${qset.title}" với ${questions?.length || 0} câu hỏi đã được tạo thành công.`;
-
-      const notificationType = questions.length < totalQuestions * 0.8 ? "warning" : "success";
-
-      await notificationsRepo.create({
-        userId,
-        title: notificationTitle,
-        message: notificationMessage,
-        type: notificationType,
-        relatedEntityType: "QuestionSet",
-        relatedEntityId: questionSetId,
-      });
-      logger.info({ questionSetId, userId }, "[questions.generate] notification created");
-    } catch (notifErr) {
-      logger.error(
-        {
-          questionSetId,
-          userId,
-          err: notifErr?.message || notifErr,
-        },
-        "[questions.generate] failed to create notification (non-fatal)"
-      );
-    }
-
-    // Emit real-time notification
-    try {
-      notificationService.emitQuestionSetGenerated(userId.toString(), updated);
-      logger.info({ questionSetId, userId }, "[questions.generate] real-time event emitted");
+      await notificationService.emitQuestionSetGenerated(userId.toString(), updated);
+      logger.info({ questionSetId, userId }, "[questions.generate] notification sent");
     } catch (emitErr) {
       logger.error(
         {

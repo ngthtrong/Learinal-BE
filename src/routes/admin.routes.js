@@ -30,5 +30,7 @@ router.get("/user-subscriptions", controller.getUserSubscriptionsAdmin);
 
 // Subscription Plans (Admin management)
 router.get("/subscription-plans", subscriptionPlansController.adminList);
+router.get("/subscription-plans/audit-logs", subscriptionPlansController.getAllAuditLogs);
+router.get("/subscription-plans/audit-logs/:logId", subscriptionPlansController.getAuditLogDetail);
 
 module.exports = router;

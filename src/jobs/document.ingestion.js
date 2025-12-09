@@ -56,6 +56,21 @@ module.exports = async function documentIngestion(payload) {
       } 
     }, { new: true });
     
+    // Send error notification
+    const errorDoc = await docsRepo.findById(documentId);
+    logger.info({ 
+      documentId, 
+      ownerId: errorDoc?.ownerId, 
+      hasOwnerId: !!errorDoc?.ownerId 
+    }, "[ingestion] checking ownerId for error notification");
+    
+    if (errorDoc && errorDoc.ownerId) {
+      await notificationService.emitDocumentProcessed(errorDoc.ownerId.toString(), errorDoc);
+      logger.info({ documentId, userId: errorDoc.ownerId }, "[ingestion] error notification sent");
+    } else {
+      logger.warn({ documentId, doc: errorDoc }, "[ingestion] no ownerId found, cannot send error notification");
+    }
+    
     // Cleanup temp file on error
     if (tempFileToCleanup) {
       try {
@@ -91,9 +106,5 @@ module.exports = async function documentIngestion(payload) {
   await contentSummary({ documentId });
   logger.info({ documentId }, "[ingestion] done");
   
-  // Emit real-time notification
-  const finalDoc = await docsRepo.findById(documentId);
-  if (finalDoc && finalDoc.uploadedBy) {
-    notificationService.emitDocumentProcessed(finalDoc.uploadedBy.toString(), finalDoc);
-  }
+  // Notification will be sent from content.summary.js after completion
 };
