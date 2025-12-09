@@ -527,7 +527,9 @@ async function checkDocumentUploadLimit(req, res, next) {
       }
     }
 
-    // Check total document upload limit (tracking-based to prevent delete abuse)
+    // [DISABLED] Check total document upload limit - now unlimited
+    // Total document limit has been removed, keeping per-subject limit only
+    /*
     if (maxTotalDocuments && maxTotalDocuments !== "unlimited" && maxTotalDocuments !== -1) {
       // Count uploads in current billing cycle from usage tracking
       let usedDocumentUploads = 0;
@@ -565,6 +567,7 @@ async function checkDocumentUploadLimit(req, res, next) {
       // Đánh dấu nếu cần consume addon quota (khi đã vượt subscription limit)
       req.shouldConsumeAddonDocumentQuota = usedDocumentUploads >= maxTotalDocuments && addonDocumentUploads > 0;
     }
+    */
 
     // Attach info to request for potential use in controller
     req.documentLimits = {

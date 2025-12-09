@@ -313,6 +313,90 @@ const templates = [
       "Mua gói bổ sung thành công! Xin chào {{user_name}}, gói {{package_name}} đã được kích hoạt. Bạn nhận được +{{test_generations}} lượt tạo đề và +{{validation_requests}} lượt xác thực. Mã GD: {{transaction_id}}.",
     isActive: true,
   },
+  {
+    templateId: "lowQuotaWarning",
+    name: "Low Quota Warning",
+    subject: "Cảnh báo: Lượt sử dụng sắp hết - Learinal",
+    category: "Subscription",
+    variables: ["user_name", "quota_type", "remaining_count", "max_count", "feature_name", "addon_url"],
+    bodyHtml: `
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fb;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="width: 100%; max-width: 500px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          
+          <tr>
+            <td style="padding: 30px 40px 20px;">
+              <table role="presentation" style="width: 100%;">
+                <tr>
+                  <td>
+                    <img src="https://learinal.app/logo.png" alt="Learinal" style="height: 32px; width: auto;" />
+                    <span style="margin-left: 8px; font-size: 18px; font-weight: 600; color: #4F46E5; vertical-align: middle;">Learinal</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          
+          <tr>
+            <td style="padding: 0 40px 30px;">
+              <h1 style="margin: 0 0 8px; font-size: 24px; font-weight: 600; color: #1a1a2e; text-align: center;">Lượt sử dụng sắp hết!</h1>
+              <p style="margin: 0 0 20px; font-size: 14px; color: #6b7280; text-align: center;">Xin chào {{user_name}},</p>
+              
+              <p style="margin: 0 0 24px; font-size: 14px; color: #374151; line-height: 1.6; text-align: center;">
+                Lượt <strong>{{feature_name}}</strong> của bạn sắp hết. Hãy mua thêm gói bổ sung để tiếp tục sử dụng dịch vụ.
+              </p>
+              
+              
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #fffbeb; border-radius: 8px; margin-bottom: 24px; border: 1px solid #fcd34d;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table role="presentation" style="width: 100%;">
+                      <tr>
+                        <td style="padding: 8px 0; text-align: center;">
+                          <span style="font-size: 13px; color: #92400e;">Lượt còn lại</span><br>
+                          <span style="font-size: 32px; font-weight: 700; color: #d97706;">{{remaining_count}}</span>
+                          <span style="font-size: 14px; color: #92400e;"> / {{max_count}}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 24px 0 0; font-size: 13px; color: #6b7280; line-height: 1.6; text-align: center;">
+                Gói bổ sung sẽ được kích hoạt ngay sau khi thanh toán thành công.
+              </p>
+            </td>
+          </tr>
+          
+          
+          <tr>
+            <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+                © Learinal. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `,
+    bodyText:
+      "Cảnh báo: Lượt sử dụng sắp hết! Xin chào {{user_name}}, lượt {{feature_name}} của bạn còn {{remaining_count}}/{{max_count}}. Mua thêm gói bổ sung tại: {{addon_url}}",
+    isActive: true,
+  },
 ];
 
 async function seed() {
