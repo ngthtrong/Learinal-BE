@@ -10,6 +10,12 @@ const { cacheResponse } = require("../middleware/cacheResponse");
 
 const router = express.Router();
 
+// Debug middleware - log all requests to this router
+router.use((req, res, next) => {
+  console.log('📍 QuestionSets Router:', req.method, req.url, 'Params:', req.params);
+  next();
+});
+
 const genSchema = Joi.object({
   body: Joi.object({
     subjectId: Joi.string().required(),

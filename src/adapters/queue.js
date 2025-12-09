@@ -17,6 +17,7 @@ const queues = {
   contentSummary: null,
   questionsGenerate: null,
   emailNotifications: null,
+  commissionCalculate: null,
 };
 
 function ensureQueues() {
@@ -24,6 +25,7 @@ function ensureQueues() {
   if (!queues.contentSummary) queues.contentSummary = createQueue('contentSummary');
   if (!queues.questionsGenerate) queues.questionsGenerate = createQueue('questionsGenerate');
   if (!queues.emailNotifications) queues.emailNotifications = createQueue('emailNotifications');
+  if (!queues.commissionCalculate) queues.commissionCalculate = createQueue('commissionCalculate');
 }
 
 async function enqueueDocumentIngestion(payload) {
@@ -69,10 +71,26 @@ async function enqueueEmail(payload) {
   logger.info({ to: payload.to }, 'Email enqueued successfully');
 }
 
+async function addJob(queueName, payload) {
+  ensureQueues();
+  const queue = queues[queueName];
+  if (!queue) {
+    logger.error({ queueName }, 'Queue not available');
+    throw new Error(`Queue ${queueName} not available (missing REDIS_URL)`);
+  }
+  logger.info({ queueName, payload }, 'Adding job to queue');
+  await queue.add(queueName, payload, { 
+    attempts: 3, 
+    backoff: { type: 'exponential', delay: 500 } 
+  });
+  logger.info({ queueName }, 'Job added successfully');
+}
+
 module.exports = {
   enqueueDocumentIngestion,
   enqueueContentSummary,
   enqueueQuestionsGenerate,
   enqueueQuestionsGenerateFromDocument,
   enqueueEmail,
+  addJob,
 };
