@@ -173,13 +173,23 @@ module.exports = {
       const created = await repo.create(toCreate);
 
       // Track usage for subscription limit enforcement
-      const { usageTrackingRepository, addonPackagesService } = req.app.locals;
+      const { usageTrackingRepository, addonPackagesService, quotaNotificationService } = req.app.locals;
       await usageTrackingRepository.trackAction(
         user.id,
         "question_set_generation",
         created._id.toString(),
         { subjectId, numQuestions: totalQuestions, difficulty }
       );
+
+      // Check and send low quota notification if remaining is 5
+      if (quotaNotificationService && req.entitlement) {
+        // Update entitlement with new usage count after tracking
+        const updatedEntitlement = {
+          ...req.entitlement,
+          usedTests: req.entitlement.usedTests + 1
+        };
+        quotaNotificationService.checkAndNotifyLowTestGenerationQuota(user.id, updatedEntitlement);
+      }
 
       // Consume addon quota if using addon (subscription quota already exceeded)
       if (req.useAddonQuota && addonPackagesService) {
@@ -448,13 +458,23 @@ module.exports = {
       });
 
       // Track usage for subscription limit enforcement
-      const { usageTrackingRepository, addonPackagesService } = req.app.locals;
+      const { usageTrackingRepository, addonPackagesService, quotaNotificationService } = req.app.locals;
       await usageTrackingRepository.trackAction(
         userId,
         "validation_request",
         validationRequest._id.toString(),
         { setId }
       );
+
+      // Check and send low quota notification if remaining is 5
+      if (quotaNotificationService && req.entitlement) {
+        // Update entitlement with new usage count after tracking
+        const updatedEntitlement = {
+          ...req.entitlement,
+          usedRequests: req.entitlement.usedRequests + 1
+        };
+        quotaNotificationService.checkAndNotifyLowValidationQuota(userId, updatedEntitlement);
+      }
 
       // Consume addon quota if using addon (subscription quota already exceeded)
       if (req.useAddonQuota && addonPackagesService) {
@@ -609,6 +629,42 @@ module.exports = {
         questions: [],
       };
       const created = await repo.create(toCreate);
+
+      // Track usage for subscription limit enforcement
+      const { usageTrackingRepository, addonPackagesService, quotaNotificationService } = req.app.locals;
+      await usageTrackingRepository.trackAction(
+        user.id,
+        "question_set_generation",
+        created._id.toString(),
+        { documentId, numQuestions, difficulty }
+      );
+
+      // Check and send low quota notification if remaining is 5
+      if (quotaNotificationService && req.entitlement) {
+        // Update entitlement with new usage count after tracking
+        const updatedEntitlement = {
+          ...req.entitlement,
+          usedTests: req.entitlement.usedTests + 1
+        };
+        quotaNotificationService.checkAndNotifyLowTestGenerationQuota(user.id, updatedEntitlement);
+      }
+
+      // Consume addon quota if using addon (subscription quota already exceeded)
+      if (req.useAddonQuota && addonPackagesService) {
+        const logger = require("../utils/logger");
+        try {
+          await addonPackagesService.tryConsumeAddonQuota(user.id, "question_set_generation");
+          logger.info(
+            { userId: user.id, questionSetId: created._id.toString() },
+            "[controller] Addon quota consumed for question generation from document"
+          );
+        } catch (addonError) {
+          logger.error(
+            { userId: user.id, error: addonError.message },
+            "[controller] Failed to consume addon quota for document generation"
+          );
+        }
+      }
 
       // Enqueue question generation from document
       const { enqueueQuestionsGenerateFromDocument } = require("../adapters/queue");

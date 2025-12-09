@@ -174,10 +174,12 @@ class AddonPackagesService {
         packageName: pkg.packageName,
         price: pkg.price,
         additionalTestGenerations: pkg.additionalTestGenerations,
-        additionalValidationRequests: pkg.additionalValidationRequests
+        additionalValidationRequests: pkg.additionalValidationRequests,
+        additionalDocumentUploads: pkg.additionalDocumentUploads || 0
       },
       remainingTestGenerations: pkg.additionalTestGenerations,
       remainingValidationRequests: pkg.additionalValidationRequests,
+      remainingDocumentUploads: pkg.additionalDocumentUploads || 0,
       status: "Active",
       purchaseDate: new Date(),
       subscriptionId: currentSubscription._id,
@@ -193,7 +195,8 @@ class AddonPackagesService {
         packageName: pkg.packageName,
         purchaseId: purchase._id,
         testGenerations: pkg.additionalTestGenerations,
-        validationRequests: pkg.additionalValidationRequests
+        validationRequests: pkg.additionalValidationRequests,
+        documentUploads: pkg.additionalDocumentUploads || 0
       },
       "[AddonService] Addon purchased successfully"
     );
@@ -242,7 +245,8 @@ class AddonPackagesService {
           actionType, 
           purchaseId: consumed._id,
           remainingTestGenerations: consumed.remainingTestGenerations,
-          remainingValidationRequests: consumed.remainingValidationRequests
+          remainingValidationRequests: consumed.remainingValidationRequests,
+          remainingDocumentUploads: consumed.remainingDocumentUploads
         },
         "[AddonService] Addon quota consumed"
       );
@@ -289,6 +293,10 @@ class AddonPackagesService {
       validationRequests: {
         fromSubscription: subscriptionEntitlements?.maxValidationRequests || 0,
         fromAddons: addonQuota.totalValidationRequests
+      },
+      documentUploads: {
+        fromSubscription: subscriptionEntitlements?.maxTotalDocuments || 0,
+        fromAddons: addonQuota.totalDocumentUploads
       }
     };
   }

@@ -418,6 +418,47 @@ class NotificationService {
       });
     }
   }
+
+  /**
+   * Emit low quota warning notification
+   * @param {string} userId - User ID
+   * @param {Object} quotaInfo - Quota information
+   * @param {string} quotaInfo.quotaType - Type: 'test_generation' or 'validation_request'
+   * @param {string} quotaInfo.featureName - Display name for the feature
+   * @param {number} quotaInfo.remaining - Remaining quota
+   * @param {number} quotaInfo.maxCount - Total quota
+   */
+  async emitLowQuotaWarning(userId, quotaInfo) {
+    const io = this._getIO();
+    
+    const { quotaType, featureName, remaining, maxCount } = quotaInfo;
+    const title = "Lượt sử dụng sắp hết";
+    const message = `Lượt ${featureName} của bạn còn ${remaining}/${maxCount}. Hãy mua thêm gói bổ sung để tiếp tục sử dụng.`;
+    
+    // Create persistent notification
+    await this._createNotification(
+      userId,
+      title,
+      message,
+      "warning",
+      "Quota",
+      null
+    );
+
+    // Emit real-time event
+    if (io) {
+      io.to(`user:${userId}`).emit("quota.low", {
+        type: "quota.low",
+        data: {
+          quotaType,
+          featureName,
+          remaining,
+          maxCount,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 module.exports = new NotificationService();

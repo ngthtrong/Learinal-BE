@@ -23,6 +23,7 @@ const UserAddonPurchaseSchema = new Schema(
       price: { type: Number, required: true },
       additionalTestGenerations: { type: Number, default: 0 },
       additionalValidationRequests: { type: Number, default: 0 },
+      additionalDocumentUploads: { type: Number, default: 0 },
     },
     // Số lượt còn lại có thể sử dụng
     remainingTestGenerations: { 
@@ -31,6 +32,12 @@ const UserAddonPurchaseSchema = new Schema(
       min: 0
     },
     remainingValidationRequests: { 
+      type: Number, 
+      default: 0,
+      min: 0
+    },
+    // Số lượt tải tài liệu còn lại
+    remainingDocumentUploads: { 
       type: Number, 
       default: 0,
       min: 0
@@ -86,7 +93,7 @@ UserAddonPurchaseSchema.index({ purchaseDate: -1 });
 UserAddonPurchaseSchema.virtual("isUsable").get(function() {
   if (this.status !== "Active") return false;
   if (this.expiryDate && new Date() > this.expiryDate) return false;
-  return (this.remainingTestGenerations > 0 || this.remainingValidationRequests > 0);
+  return (this.remainingTestGenerations > 0 || this.remainingValidationRequests > 0 || this.remainingDocumentUploads > 0);
 });
 
 // Method to check if has remaining quota for specific action
@@ -100,6 +107,9 @@ UserAddonPurchaseSchema.methods.hasQuotaFor = function(actionType) {
   if (actionType === "validation_request") {
     return this.remainingValidationRequests > 0;
   }
+  if (actionType === "document_upload") {
+    return this.remainingDocumentUploads > 0;
+  }
   return false;
 };
 
@@ -107,14 +117,21 @@ UserAddonPurchaseSchema.methods.hasQuotaFor = function(actionType) {
 UserAddonPurchaseSchema.methods.consumeQuota = function(actionType) {
   if (actionType === "question_set_generation" && this.remainingTestGenerations > 0) {
     this.remainingTestGenerations -= 1;
-    if (this.remainingTestGenerations === 0 && this.remainingValidationRequests === 0) {
+    if (this.remainingTestGenerations === 0 && this.remainingValidationRequests === 0 && this.remainingDocumentUploads === 0) {
       this.status = "Depleted";
     }
     return true;
   }
   if (actionType === "validation_request" && this.remainingValidationRequests > 0) {
     this.remainingValidationRequests -= 1;
-    if (this.remainingTestGenerations === 0 && this.remainingValidationRequests === 0) {
+    if (this.remainingTestGenerations === 0 && this.remainingValidationRequests === 0 && this.remainingDocumentUploads === 0) {
+      this.status = "Depleted";
+    }
+    return true;
+  }
+  if (actionType === "document_upload" && this.remainingDocumentUploads > 0) {
+    this.remainingDocumentUploads -= 1;
+    if (this.remainingTestGenerations === 0 && this.remainingValidationRequests === 0 && this.remainingDocumentUploads === 0) {
       this.status = "Depleted";
     }
     return true;

@@ -35,6 +35,12 @@ const AddonPackageSchema = new Schema(
       default: 0,
       min: 0
     },
+    // Số lượt tải tài liệu được cộng thêm
+    additionalDocumentUploads: { 
+      type: Number, 
+      default: 0,
+      min: 0
+    },
     // Trạng thái gói
     status: { 
       type: String, 

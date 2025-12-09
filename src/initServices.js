@@ -7,7 +7,9 @@ const { createRepositories } = require('./repositories');
 const SubscriptionPlansService = require('./services/subscriptionPlans.service');
 const UserSubscriptionsService = require('./services/userSubscriptions.service');
 const AddonPackagesService = require('./services/addonPackages.service');
-const NotificationsService = require('./services/notifications.service');
+const QuotaNotificationService = require('./services/quotaNotification.service');
+const LLMClient = require('./adapters/llmClient');
+const { llm } = require('./config');
 
 function initializeServices(app) {
   // Create all repositories
@@ -16,9 +18,14 @@ function initializeServices(app) {
   // Inject repositories into app.locals (for direct access)
   Object.assign(app.locals, repositories);
 
+  // Create LLM client for AI operations
+  const llmClient = new LLMClient(llm);
+  app.locals.llmClient = llmClient;
+
   // Create services with dependency injection
   const subscriptionPlansService = new SubscriptionPlansService({
     subscriptionPlansRepository: repositories.subscriptionPlansRepository,
+    subscriptionPlanAuditLogsRepository: repositories.subscriptionPlanAuditLogsRepository,
   });
 
   const userSubscriptionsService = new UserSubscriptionsService({
@@ -33,15 +40,18 @@ function initializeServices(app) {
     userSubscriptionsRepository: repositories.userSubscriptionsRepository,
   });
 
-  const notificationsService = new NotificationsService({
-    notificationsRepository: repositories.notificationsRepository,
+  const quotaNotificationService = new QuotaNotificationService({
+    usersRepository: repositories.usersRepository,
+    userSubscriptionsRepository: repositories.userSubscriptionsRepository,
+    usageTrackingRepository: repositories.usageTrackingRepository,
+    addonPackagesService: addonPackagesService,
   });
 
   // Inject services into app.locals
   app.locals.subscriptionPlansService = subscriptionPlansService;
   app.locals.userSubscriptionsService = userSubscriptionsService;
   app.locals.addonPackagesService = addonPackagesService;
-  app.locals.notificationsService = notificationsService;
+  app.locals.quotaNotificationService = quotaNotificationService;
 }
 
 module.exports = { initializeServices };

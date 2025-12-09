@@ -16,9 +16,13 @@ class UserSubscriptionsService {
 
   async getActiveSubscription(userId) {
     const UserSubscription = this.repository.model;
+    const now = new Date();
+    
+    // Find active subscription that hasn't expired yet (real-time check)
     const subscription = await UserSubscription.findOne({
       userId: userId,
       status: "Active",
+      endDate: { $gt: now }, // Only return if endDate is in the future
     })
       .populate("planId")
       .lean();

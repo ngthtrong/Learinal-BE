@@ -41,7 +41,8 @@ class UserAddonPurchasesRepository extends BaseRepository {
           {
             $or: [
               { remainingTestGenerations: { $gt: 0 } },
-              { remainingValidationRequests: { $gt: 0 } }
+              { remainingValidationRequests: { $gt: 0 } },
+              { remainingDocumentUploads: { $gt: 0 } }
             ]
           }
         ]
@@ -71,12 +72,13 @@ class UserAddonPurchasesRepository extends BaseRepository {
         $group: {
           _id: null,
           totalTestGenerations: { $sum: "$remainingTestGenerations" },
-          totalValidationRequests: { $sum: "$remainingValidationRequests" }
+          totalValidationRequests: { $sum: "$remainingValidationRequests" },
+          totalDocumentUploads: { $sum: "$remainingDocumentUploads" }
         }
       }
     ]);
 
-    return result[0] || { totalTestGenerations: 0, totalValidationRequests: 0 };
+    return result[0] || { totalTestGenerations: 0, totalValidationRequests: 0, totalDocumentUploads: 0 };
   }
 
   /**
@@ -102,12 +104,13 @@ class UserAddonPurchasesRepository extends BaseRepository {
         $group: {
           _id: null,
           totalTestGenerations: { $sum: "$packageSnapshot.additionalTestGenerations" },
-          totalValidationRequests: { $sum: "$packageSnapshot.additionalValidationRequests" }
+          totalValidationRequests: { $sum: "$packageSnapshot.additionalValidationRequests" },
+          totalDocumentUploads: { $sum: "$packageSnapshot.additionalDocumentUploads" }
         }
       }
     ]);
 
-    return result[0] || { totalTestGenerations: 0, totalValidationRequests: 0 };
+    return result[0] || { totalTestGenerations: 0, totalValidationRequests: 0, totalDocumentUploads: 0 };
   }
 
   /**
@@ -115,9 +118,12 @@ class UserAddonPurchasesRepository extends BaseRepository {
    */
   async findAvailableForAction(userId, actionType) {
     const now = new Date();
-    const quotaField = actionType === "question_set_generation" 
-      ? "remainingTestGenerations" 
-      : "remainingValidationRequests";
+    let quotaField = "remainingTestGenerations";
+    if (actionType === "validation_request") {
+      quotaField = "remainingValidationRequests";
+    } else if (actionType === "document_upload") {
+      quotaField = "remainingDocumentUploads";
+    }
     
     return this.findOne(
       {
@@ -140,9 +146,12 @@ class UserAddonPurchasesRepository extends BaseRepository {
    */
   async consumeQuota(userId, actionType) {
     const now = new Date();
-    const quotaField = actionType === "question_set_generation" 
-      ? "remainingTestGenerations" 
-      : "remainingValidationRequests";
+    let quotaField = "remainingTestGenerations";
+    if (actionType === "validation_request") {
+      quotaField = "remainingValidationRequests";
+    } else if (actionType === "document_upload") {
+      quotaField = "remainingDocumentUploads";
+    }
 
     // Tìm add-on có quota (FIFO - mua trước dùng trước)
     const addon = await this.model.findOne(
@@ -166,8 +175,8 @@ class UserAddonPurchasesRepository extends BaseRepository {
     // Giảm quota
     addon[quotaField] -= 1;
 
-    // Kiểm tra nếu hết cả 2 loại quota thì đánh dấu Depleted
-    if (addon.remainingTestGenerations === 0 && addon.remainingValidationRequests === 0) {
+    // Kiểm tra nếu hết cả 3 loại quota thì đánh dấu Depleted
+    if (addon.remainingTestGenerations === 0 && addon.remainingValidationRequests === 0 && addon.remainingDocumentUploads === 0) {
       addon.status = "Depleted";
     }
 
