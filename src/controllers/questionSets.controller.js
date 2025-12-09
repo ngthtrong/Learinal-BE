@@ -16,6 +16,15 @@ function mapId(doc) {
   return { id: String(_id || rest.id), ...rest };
 }
 
+// Helper: Extract userId from populated object or direct ObjectId
+function extractUserId(userIdField) {
+  if (!userIdField) return null;
+  // If it's a populated object with _id, extract _id
+  if (userIdField._id) return userIdField._id;
+  // Otherwise return as-is (should be ObjectId)
+  return userIdField;
+}
+
 // Helper: Map Easy/Medium/Hard to Remember/Understand/Apply/Analyze
 function mapDifficultyLevel(level) {
   const mapping = {
@@ -37,8 +46,13 @@ module.exports = {
         { userId: user.id },
         { page, pageSize, sort: { createdAt: -1 } }
       );
+      
+      console.log('📊 QuestionSets list - Items count:', items?.length);
+      console.log('📊 First item:', JSON.stringify(items?.[0], null, 2));
+      
+      // items from aggregation already have 'id' field, no need to map
       res.status(200).json({
-        items: (items || []).map(mapId),
+        items: items || [],
         meta: { page, pageSize, total: totalItems, totalPages },
       });
     } catch (e) {
@@ -78,8 +92,12 @@ module.exports = {
         sort: { createdAt: -1 },
       });
 
+      console.log('📊 QuestionSets by subject - Items count:', result.items?.length);
+      console.log('📊 First item:', JSON.stringify(result.items?.[0], null, 2));
+
+      // items from aggregation already have 'id' field, no need to map
       return res.status(200).json({
-        items: result.items.map(mapId),
+        items: result.items || [],
         meta: {
           page: result.meta.page,
           pageSize: result.meta.pageSize,
@@ -217,27 +235,55 @@ module.exports = {
       const user = req.user;
       const item = await repo.findById(req.params.id);
 
+      console.log('🔍 GET question-set:', req.params.id);
+      console.log('👤 Current user:', { id: user.id, email: user.email, role: user.role });
+
       if (!item) {
+        console.log('❌ Question set not found in DB');
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       }
 
-      const isOwner = String(item.userId) === String(user.id);
+      console.log('📦 Question set found:', {
+        id: item._id || item.id,
+        userId: item.userId,
+        userIdType: typeof item.userId,
+        isShared: item.isShared,
+        status: item.status
+      });
+
+      // Extract userId from populated object or direct ObjectId
+      const itemUserId = item.userId?._id || item.userId;
+      const isOwner = String(itemUserId) === String(user.id);
       const isPubliclyShared = item.isShared === true;
       const isExpertPublic = item.status === "Public"; // Expert's public set
 
+      console.log('🔐 Access check:', { 
+        isOwner, 
+        isPubliclyShared, 
+        isExpertPublic,
+        userIdString: String(user.id),
+        itemUserIdString: String(itemUserId),
+        itemUserIdRaw: String(item.userId),
+        comparison: `${String(itemUserId)} === ${String(user.id)} = ${isOwner}`
+      });
+
       // Allow access if user is owner
       if (isOwner) {
+        console.log('✅ Access granted: User is owner');
         return res.status(200).json(mapId(item));
       }
 
       // If not owner and not shared AND not expert's public set, deny access
       if (!isPubliclyShared && !isExpertPublic) {
+        console.log('❌ Access denied: Not owner, not shared, not expert public');
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       }
 
       // If question set is Public (created by expert), check Premium subscription
       if (isExpertPublic && !isOwner) {
-        const ownerUser = await usersRepo.findById(item.userId);
+        // Use itemUserId (already extracted above) or extract again
+        const ownerUserId = item.userId?._id || item.userId;
+        const ownerUser = await usersRepo.findById(ownerUserId);
         if (ownerUser && ownerUser.role === "Expert") {
           // Check if current user has Premium subscription
           const { userSubscriptionsService } = req.app.locals;
@@ -283,7 +329,8 @@ module.exports = {
         { $set: allowed },
         { new: true, runValidators: true }
       );
-      if (!updated || String(updated.userId) !== String(user.id))
+      const updatedUserId = extractUserId(updated?.userId);
+      if (!updated || String(updatedUserId) !== String(user.id))
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       res.status(200).json(mapId(updated));
     } catch (e) {
@@ -296,7 +343,8 @@ module.exports = {
     try {
       const user = req.user;
       const existing = await repo.findById(req.params.id);
-      if (!existing || String(existing.userId) !== String(user.id))
+      const existingUserId = extractUserId(existing?.userId);
+      if (!existing || String(existingUserId) !== String(user.id))
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       const sharedUrl = `share_${existing._id || existing.id}_${Date.now()}`;
       const updated = await repo.updateById(
@@ -315,7 +363,8 @@ module.exports = {
     try {
       const user = req.user;
       const existing = await repo.findById(req.params.id);
-      if (!existing || String(existing.userId) !== String(user.id))
+      const existingUserId = extractUserId(existing?.userId);
+      if (!existing || String(existingUserId) !== String(user.id))
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       const updated = await repo.updateById(
         req.params.id,
@@ -333,7 +382,8 @@ module.exports = {
     try {
       const user = req.user;
       const existing = await repo.findById(req.params.id);
-      if (!existing || String(existing.userId) !== String(user.id))
+      const existingUserId = extractUserId(existing?.userId);
+      if (!existing || String(existingUserId) !== String(user.id))
         return res.status(404).json({ code: "NotFound", message: "Not found" });
 
       // Delete all quiz attempts for this question set
@@ -361,7 +411,8 @@ module.exports = {
 
       // 1. Validate ownership
       const questionSet = await repo.findById(setId);
-      if (!questionSet || questionSet.userId.toString() !== userId) {
+      const questionSetUserId = extractUserId(questionSet?.userId);
+      if (!questionSet || String(questionSetUserId) !== String(userId)) {
         return res.status(404).json({
           code: "NotFound",
           message: "Question set not found",

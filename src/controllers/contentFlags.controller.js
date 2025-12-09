@@ -106,12 +106,13 @@ module.exports = {
       const user = req.user;
       const page = Math.max(1, parseInt(req.query.page || '1', 10));
       const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
-      const { status, contentType } = req.query;
+      const { status, contentType, contentId } = req.query;
 
       const filter = {};
       
       if (status) filter.status = status;
       if (contentType) filter.contentType = contentType;
+      if (contentId) filter.contentId = contentId; // Filter by specific content
 
       // If expert, only show flags assigned to them
       if (user.role === 'Expert') {
