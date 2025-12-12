@@ -459,6 +459,44 @@ class NotificationService {
       });
     }
   }
+
+  /**
+   * Emit custom notification
+   * @param {string} userId - ID of user to notify
+   * @param {string} title - Notification title
+   * @param {string} message - Notification message
+   * @param {string} type - Notification type (info, success, warning, error)
+   * @param {string} relatedEntityType - Type of related entity (optional)
+   * @param {string} relatedEntityId - ID of related entity (optional)
+   */
+  async emitCustomNotification(userId, title, message, type = "info", relatedEntityType = null, relatedEntityId = null) {
+    const io = this._getIO();
+    
+    // Create persistent notification
+    await this._createNotification(
+      userId,
+      title,
+      message,
+      type,
+      relatedEntityType,
+      relatedEntityId
+    );
+
+    // Emit real-time event
+    if (io) {
+      io.to(`user:${userId}`).emit("notification.custom", {
+        type: "notification.custom",
+        data: {
+          title,
+          message,
+          notificationType: type,
+          relatedEntityType,
+          relatedEntityId,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 module.exports = new NotificationService();

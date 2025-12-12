@@ -16,4 +16,6 @@ module.exports = {
   AddonPackage: require("./addonPackage.model"),
   UserAddonPurchase: require("./userAddonPurchase.model"),
   ProcessedTransaction: require("./processedTransaction.model"),
+  BankAccount: require("./bankAccount.model"),
+  PaymentBatch: require("./paymentBatch.model"),
 };
