@@ -52,13 +52,15 @@ async function isPremiumUser(userId) {
  * @param {Object} questionSet 
  * @returns {Promise<{type: string, expertId: string, validationRequestId: string|null, entitledUntil: Date|null}>}
  */
-async function determineCommissionType(questionSet) {
+async function determineCommissionType(questionSet, attempt) {
   const setId = questionSet._id.toString();
   
-  // Case 1: Published by Expert (status = 'Published' and creator is Expert)
-  if (questionSet.status === 'Published') {
+  // Case 1: Published by Expert (status = 'Published' or 'Public' and creator is Expert)
+  // Expert's Public sets are open to all premium users
+  if (questionSet.status === 'Published' || questionSet.status === 'Public') {
     const creator = await User.findById(questionSet.userId).select('role').lean();
     if (creator && creator.role === 'Expert') {
+      // Expert created content → commission for all premium attempts
       return {
         type: commissionConfig.types.PUBLISHED,
         expertId: questionSet.userId.toString(),
@@ -66,10 +68,15 @@ async function determineCommissionType(questionSet) {
         entitledUntil: null, // Published content has no expiration
       };
     }
+    
+    // If Public but creator is Learner, this is a public version after validation
+    // In this case, check for validation request for commission
+    // (Learner's public sets don't earn commission unless validated by Expert)
   }
   
   // Case 2: Validated by Expert (has completed validation request)
-  if (questionSet.status === 'Validated') {
+  // This applies to Learner's content that was validated
+  if (questionSet.status === 'Validated' || questionSet.status === 'Public') {
     const validationRequest = await ValidationRequest.findOne({
       setId: questionSet._id,
       status: 'Completed',
@@ -142,7 +149,7 @@ async function calculateCommissionForAttempt(payload) {
     }
 
     // 4. Check if question set is eligible for commission
-    const eligibleStatuses = ['Published', 'Validated'];
+    const eligibleStatuses = ['Published', 'Public', 'Validated'];
     if (!eligibleStatuses.includes(questionSet.status)) {
       logger.info({ attemptId, setId: attempt.setId, status: questionSet.status }, 
         'Question set status not eligible for commission');
@@ -150,7 +157,7 @@ async function calculateCommissionForAttempt(payload) {
     }
 
     // 5. Determine commission type and expert
-    const commissionInfo = await determineCommissionType(questionSet);
+    const commissionInfo = await determineCommissionType(questionSet, attempt);
     if (!commissionInfo) {
       logger.info({ attemptId, setId: attempt.setId }, 
         'No commission applicable for this question set');

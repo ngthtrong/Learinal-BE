@@ -34,7 +34,7 @@ const contentFlagSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'UnderReview', 'Resolved', 'Dismissed'],
+      enum: ['Pending', 'UnderReview', 'SentToExpert', 'ExpertResponded', 'Resolved', 'Dismissed'],
       default: 'Pending',
     },
     reviewedBy: {
@@ -46,9 +46,38 @@ const contentFlagSchema = new mongoose.Schema(
     },
     action: {
       type: String,
-      enum: ['None', 'Warning', 'ContentRemoved', 'UserBanned'],
+      enum: ['None', 'Warning', 'ContentRemoved', 'UserBanned', 'RequestExpertFix'],
     },
     notes: {
+      type: String,
+      maxlength: 1000,
+    },
+    // Admin's note when forwarding to expert
+    adminNote: {
+      type: String,
+      maxlength: 1000,
+    },
+    // Expert who needs to resolve (content owner)
+    assignedExpert: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    sentToExpertAt: {
+      type: Date,
+    },
+    // Expert's response
+    expertResponse: {
+      type: String,
+      maxlength: 1000,
+    },
+    expertRespondedAt: {
+      type: Date,
+    },
+    // Final resolution
+    resolvedAt: {
+      type: Date,
+    },
+    resolutionNote: {
       type: String,
       maxlength: 1000,
     },

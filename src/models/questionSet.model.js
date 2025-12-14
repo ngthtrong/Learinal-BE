@@ -47,6 +47,15 @@ const QuestionSetSchema = new Schema(
   { timestamps: true, versionKey: false, collection: "questionSets" }
 );
 
+// Virtual field for question count
+QuestionSetSchema.virtual("questionCount").get(function () {
+  return this.questions ? this.questions.length : 0;
+});
+
+// Ensure virtuals are included in JSON
+QuestionSetSchema.set("toJSON", { virtuals: true });
+QuestionSetSchema.set("toObject", { virtuals: true });
+
 QuestionSetSchema.index({ userId: 1, subjectId: 1, status: 1, createdAt: -1 });
 
 module.exports = model("QuestionSet", QuestionSetSchema);
