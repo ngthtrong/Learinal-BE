@@ -37,8 +37,10 @@ const CommissionRecordSchema = new Schema(
     isPremiumAttempt: { type: Boolean, default: false },
 
     // Payment tracking
+    paymentBatchId: { type: Types.ObjectId, ref: "PaymentBatch" },
     paidAt: { type: Date },
     paymentReference: { type: String, trim: true },
+    paymentNote: { type: String, trim: true },
 
     // Reconciliation tracking
     isReconciled: { type: Boolean, default: false }, // Has bonus been calculated?
