@@ -8,6 +8,9 @@ const SubscriptionPlansService = require('./services/subscriptionPlans.service')
 const UserSubscriptionsService = require('./services/userSubscriptions.service');
 const AddonPackagesService = require('./services/addonPackages.service');
 const QuotaNotificationService = require('./services/quotaNotification.service');
+const BankAccountService = require('./services/bankAccount.service');
+const PaymentBatchService = require('./services/paymentBatch.service');
+const notificationService = require('./services/notification.service');
 const LLMClient = require('./adapters/llmClient');
 const { llm } = require('./config');
 
@@ -47,11 +50,25 @@ function initializeServices(app) {
     addonPackagesService: addonPackagesService,
   });
 
+  const bankAccountService = new BankAccountService({
+    bankAccountsRepository: repositories.bankAccountsRepository,
+    usersRepository: repositories.usersRepository,
+  });
+
+  const paymentBatchService = new PaymentBatchService({
+    paymentBatchesRepository: repositories.paymentBatchesRepository,
+    commissionRecordsRepository: repositories.commissionRecordsRepository,
+    bankAccountsRepository: repositories.bankAccountsRepository,
+    notificationService: notificationService,
+  });
+
   // Inject services into app.locals
   app.locals.subscriptionPlansService = subscriptionPlansService;
   app.locals.userSubscriptionsService = userSubscriptionsService;
   app.locals.addonPackagesService = addonPackagesService;
   app.locals.quotaNotificationService = quotaNotificationService;
+  app.locals.bankAccountService = bankAccountService;
+  app.locals.paymentBatchService = paymentBatchService;
 }
 
 module.exports = { initializeServices };

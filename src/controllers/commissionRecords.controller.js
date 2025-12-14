@@ -14,7 +14,9 @@ module.exports = {
     try {
       const userId = req.user.id;
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
+      // Allow higher pageSize for Admin (up to 10000), Expert limited to 100
+      const maxPageSize = req.user.role === "Admin" ? 10000 : 100;
+      const pageSize = Math.min(maxPageSize, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
 
       const statusFilter = (req.query.status || "").trim();
       const q = (req.query.q || "").trim();
@@ -166,17 +168,23 @@ module.exports = {
   },
 
   // GET /commission-records/summary (Expert - earnings summary with Hybrid Model breakdown)
+  // Admin can pass expertId query parameter to get summary for any expert
   summary: async (req, res, next) => {
     try {
-      const userId = req.user.id;
-      const { month } = req.query; // Optional: "YYYY-MM" format
+      const { month, expertId } = req.query; // Optional: "YYYY-MM" format, expertId for admin
+      
+      // Determine which expert's data to fetch
+      let targetExpertId = req.user.id;
+      if (req.user.role === "Admin" && expertId) {
+        targetExpertId = expertId;
+      }
 
       // Use the new stats function from commission.calculate.js
       const { getExpertCommissionStats } = require("../jobs/commission.calculate");
-      const stats = await getExpertCommissionStats(userId, month || null);
+      const stats = await getExpertCommissionStats(targetExpertId, month || null);
 
       // Also get traditional summary for backward compatibility
-      const commissions = await repo.find({ expertId: userId });
+      const commissions = await repo.find({ expertId: targetExpertId });
 
       const totalEarned = commissions
         .filter((c) => c.status === "Paid")
