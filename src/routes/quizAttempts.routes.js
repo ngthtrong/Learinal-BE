@@ -12,9 +12,14 @@ const submitSchema = Joi.object({
 	params: Joi.object({ id: Joi.string().required() }),
 	body: Joi.object({ answers: Joi.array().items(Joi.object({ questionId: Joi.string().required(), selectedOptionIndex: Joi.number().integer().min(0).required() })).required() }),
 }).unknown(true);
+const saveAnswerSchema = Joi.object({
+	params: Joi.object({ id: Joi.string().required() }),
+	body: Joi.object({ questionId: Joi.string().required(), selectedOptionIndex: Joi.number().integer().min(0).required() }),
+}).unknown(true);
 
 router.post('/', rateLimit({ limit: 30 }), authenticateJWT, inputValidation(createSchema), controller.create);
 router.get('/:id', rateLimit({ limit: 60 }), authenticateJWT, controller.get);
+router.patch('/:id/answer', rateLimit({ limit: 120 }), authenticateJWT, inputValidation(saveAnswerSchema), controller.saveAnswer);
 router.post('/:id/submit', rateLimit({ limit: 30 }), authenticateJWT, inputValidation(submitSchema), controller.submit);
 
 module.exports = router;

@@ -86,7 +86,7 @@ class EmailClient {
    * 3. Fallback HTML
    */
   async send(to, subject, templateId, variables, options = {}) {
-    const from = this.config.fromAddress || "no-reply@learinal.app";
+    const from = this.config.fromAddress || "no-reply@learinalapp.page.gd";
     const { dbTemplateId } = options;
 
     // Check if we should use database template

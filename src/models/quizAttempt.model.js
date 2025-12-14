@@ -13,6 +13,7 @@ const QuizAttemptSchema = new Schema({
   userAnswers: { type: [UserAnswerSchema], required: true },
   isCompleted: { type: Boolean, required: true },
   isTimed: { type: Boolean, default: true },
+  timerMinutes: { type: Number, default: null }, // Total time limit in minutes (for resume calculation)
   startTime: { type: Date },
   endTime: { type: Date },
 }, { timestamps: true, versionKey: false, collection: 'quizAttempts' });

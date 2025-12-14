@@ -13,7 +13,7 @@ module.exports = {
   create: async (req, res, next) => {
     try {
       const user = req.user;
-      const { setId, isTimed = true } = req.body || {};
+      const { setId, isTimed = true, timerMinutes = null } = req.body || {};
       if (!setId)
         return res.status(400).json({ code: "ValidationError", message: "setId required" });
       
@@ -25,6 +25,7 @@ module.exports = {
         userAnswers: [],
         isCompleted: false,
         isTimed,
+        timerMinutes: isTimed ? timerMinutes : null, // Store timer duration for resume
         startTime: start,
         endTime: start,
       });
@@ -199,6 +200,67 @@ module.exports = {
       return res.status(200).json({ id: String(updated._id || updated.id), ...updated });
     } catch (e) {
       console.error('Quiz submit error:', e);
+      next(e);
+    }
+  },
+
+  // PATCH /quiz-attempts/:id/answer - Save a single answer (auto-save during quiz)
+  saveAnswer: async (req, res, next) => {
+    try {
+      const user = req.user;
+      const attemptId = req.params.id;
+      const { questionId, selectedOptionIndex } = req.body || {};
+
+      if (!questionId || selectedOptionIndex === undefined) {
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "questionId and selectedOptionIndex are required" 
+        });
+      }
+
+      const attempt = await attemptsRepo.findById(attemptId);
+      if (!attempt || String(attempt.userId) !== String(user.id)) {
+        return res.status(404).json({ code: "NotFound", message: "Attempt not found" });
+      }
+
+      if (attempt.isCompleted) {
+        return res.status(400).json({ 
+          code: "AttemptCompleted", 
+          message: "Cannot save answer to a completed attempt" 
+        });
+      }
+
+      // Get current answers and update/add the new one
+      const currentAnswers = attempt.userAnswers || [];
+      const existingIndex = currentAnswers.findIndex(a => a.questionId === questionId);
+      
+      if (existingIndex >= 0) {
+        // Update existing answer
+        currentAnswers[existingIndex].selectedOptionIndex = selectedOptionIndex;
+        currentAnswers[existingIndex].isCorrect = false; // Will be recalculated on submit
+      } else {
+        // Add new answer
+        currentAnswers.push({
+          questionId,
+          selectedOptionIndex,
+          isCorrect: false, // Will be recalculated on submit
+        });
+      }
+
+      // Update attempt with new answers
+      const updated = await attemptsRepo.updateById(
+        attemptId,
+        { $set: { userAnswers: currentAnswers } },
+        { new: true }
+      );
+
+      return res.status(200).json({ 
+        success: true, 
+        message: "Answer saved",
+        savedAnswer: { questionId, selectedOptionIndex }
+      });
+    } catch (e) {
+      console.error('Save answer error:', e);
       next(e);
     }
   },
