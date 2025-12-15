@@ -15,6 +15,21 @@ const ValidationRequestSchema = new Schema({
   revisionRequestTime: { type: Date },
   requestTime: { type: Date, required: true },
   completionTime: { type: Date },
+  
+  // Snapshot of question set data (preserved even if learner deletes the set)
+  questionSetSnapshot: {
+    title: { type: String },
+    description: { type: String },
+    questionCount: { type: Number },
+    questions: [{
+      questionId: { type: String },
+      questionText: { type: String },
+      options: [{ type: String }],
+      correctAnswerIndex: { type: Number },
+      difficultyLevel: { type: String },
+      explanation: { type: String },
+    }],
+  },
 }, { timestamps: true, versionKey: false, collection: 'validationRequests' });
 
 ValidationRequestSchema.index({ status: 1, requestTime: -1 });

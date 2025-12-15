@@ -8,7 +8,7 @@ const CommissionRecordSchema = new Schema(
   {
     // Core references
     expertId: { type: Types.ObjectId, ref: "User", required: true },
-    attemptId: { type: Types.ObjectId, ref: "QuizAttempt", required: true },
+    attemptId: { type: Types.ObjectId, ref: "QuizAttempt" }, // Not required for Validated type
     setId: { type: Types.ObjectId, ref: "QuestionSet", required: true },
     validationRequestId: { type: Types.ObjectId, ref: "ValidationRequest" },
 
@@ -55,6 +55,14 @@ const CommissionRecordSchema = new Schema(
       questionSetTitle: { type: String },
       learnerScore: { type: Number },
       attemptDuration: { type: Number }, // seconds
+      learnerId: { type: String }, // Track for per-learner commission limit
+    },
+    
+    // Snapshot of question set data (preserved even if set is deleted)
+    questionSetSnapshot: {
+      title: { type: String },
+      description: { type: String },
+      status: { type: String },
     },
   },
   { timestamps: true, versionKey: false, collection: "commissionRecords" }
@@ -66,6 +74,7 @@ CommissionRecordSchema.index({ setId: 1, transactionDate: -1 });
 CommissionRecordSchema.index({ expertId: 1, reconciliationMonth: 1 });
 CommissionRecordSchema.index({ isReconciled: 1, status: 1 });
 CommissionRecordSchema.index({ type: 1, transactionDate: -1 });
-CommissionRecordSchema.index({ attemptId: 1 }, { unique: true }); // One commission per attempt
+// Note: attemptId removed unique constraint to allow null for Validated type
+CommissionRecordSchema.index({ attemptId: 1 }, { sparse: true }); // One commission per attempt (for Published type)
 
 module.exports = model("CommissionRecord", CommissionRecordSchema);

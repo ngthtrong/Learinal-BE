@@ -451,12 +451,26 @@ module.exports = {
         });
       }
 
-      // 3. Create validation request
+      // 3. Create validation request with question set snapshot
       const validationRequest = await validationRequestsRepo.create({
         setId,
         learnerId: userId,
         status: "PendingAssignment",
         requestTime: new Date(),
+        // Save snapshot of question set data
+        questionSetSnapshot: {
+          title: questionSet.title,
+          description: questionSet.description,
+          questionCount: (questionSet.questions || []).length,
+          questions: (questionSet.questions || []).map(q => ({
+            questionId: q.questionId || String(q._id),
+            questionText: q.questionText,
+            options: q.options || [],
+            correctAnswerIndex: q.correctAnswerIndex,
+            difficultyLevel: q.difficultyLevel,
+            explanation: q.explanation,
+          })),
+        },
       });
 
       // Track usage for subscription limit enforcement

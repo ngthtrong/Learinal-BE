@@ -163,6 +163,34 @@ async function calculateCommissionForAttempt(payload) {
         'No commission applicable for this question set');
       return null;
     }
+    
+    // 5.1. Skip VALIDATED type - already paid when validation completed
+    if (commissionInfo.type === commissionConfig.types.VALIDATED) {
+      logger.info({ attemptId, setId: attempt.setId }, 
+        'Validated commission already paid at validation time - skipping');
+      return null;
+    }
+    
+    // 5.2. For PUBLISHED type: Check learner attempt limit (max 20 per learner per set)
+    if (commissionInfo.type === commissionConfig.types.PUBLISHED) {
+      const learnerCommissionCount = await CommissionRecord.countDocuments({
+        setId: questionSet._id,
+        type: commissionConfig.types.PUBLISHED,
+        'metadata.learnerId': attempt.userId.toString(),
+      });
+      
+      const maxAttemptsPerLearner = 20;
+      // Check if learner already has 20 commissions - if yes, skip this attempt
+      if (learnerCommissionCount >= maxAttemptsPerLearner) {
+        logger.info({ 
+          attemptId, 
+          setId: attempt.setId, 
+          learnerId: attempt.userId.toString(),
+          currentCount: learnerCommissionCount 
+        }, `Learner already has ${learnerCommissionCount} commissions (limit: ${maxAttemptsPerLearner}) - skipping commission`);
+        return null;
+      }
+    }
 
     // 6. Check if attempt user is a premium subscriber
     const isPremium = await isPremiumUser(attempt.userId.toString());
@@ -183,7 +211,7 @@ async function calculateCommissionForAttempt(payload) {
       return null;
     }
 
-    // 8. Create commission record
+    // 8. Create commission record with question set snapshot
     const now = new Date();
     const commissionRecord = await CommissionRecord.create({
       expertId: commissionInfo.expertId,
@@ -206,6 +234,13 @@ async function calculateCommissionForAttempt(payload) {
         attemptDuration: attempt.endTime && attempt.startTime 
           ? Math.round((new Date(attempt.endTime) - new Date(attempt.startTime)) / 1000)
           : null,
+        learnerId: attempt.userId.toString(), // Track for per-learner limit
+      },
+      // Save snapshot in case question set is deleted later
+      questionSetSnapshot: {
+        title: questionSet.title,
+        description: questionSet.description,
+        status: questionSet.status,
       },
     });
 
