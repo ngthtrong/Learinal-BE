@@ -121,6 +121,7 @@ module.exports = {
         difficulty = "Understand",
         difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }
         topicDistribution = null, // { "topic-id-1": 10, "topic-id-2": 20, ... }
+        language = "vi", // "vi" for Vietnamese, "en" for English
       } = req.body || {};
 
       if (!subjectId || !title) {
@@ -136,17 +137,17 @@ module.exports = {
           (sum, count) => sum + (count || 0),
           0
         );
-        if (totalQuestions < 1 || totalQuestions > 100) {
+        if (totalQuestions < 1 || totalQuestions > 50) {
           return res.status(400).json({
             code: "ValidationError",
-            message: "Total questions from difficultyDistribution must be between 1 and 100",
+            message: "Total questions from difficultyDistribution must be between 1 and 50",
           });
         }
       } else {
-        if (numQuestions < 1 || numQuestions > 100) {
+        if (numQuestions < 1 || numQuestions > 50) {
           return res
             .status(400)
-            .json({ code: "ValidationError", message: "numQuestions must be between 1 and 100" });
+            .json({ code: "ValidationError", message: "numQuestions must be between 1 and 50" });
         }
       }
 
@@ -221,6 +222,7 @@ module.exports = {
         difficulty,
         difficultyDistribution,
         topicDistribution,
+        language,
       };
 
       logger.info({ jobPayload }, "[controller] enqueueing question generation");

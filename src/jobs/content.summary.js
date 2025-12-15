@@ -39,20 +39,30 @@ module.exports = async function contentSummary(payload) {
   try {
     logger.info({ documentId, textLen: (doc.extractedText || "").length }, "[summary] start");
     
-    // Generate both summary and table of contents in parallel
-    const [summaryResult, tocResult] = await Promise.allSettled([
-      client.summarize({ text: doc.extractedText || "" }),
-      client.generateTableOfContents({ text: doc.extractedText || "" })
-    ]);
+    // Process LLM calls SEQUENTIALLY to avoid quota issues
+    // Step 1: Generate summary first
+    let summaryShort = '';
+    let summaryFull = '';
+    try {
+      const summaryResult = await client.summarize({ text: doc.extractedText || "" });
+      summaryShort = summaryResult.summaryShort || '';
+      summaryFull = summaryResult.summaryFull || '';
+      logger.info({ documentId, hasSummary: !!summaryFull }, "[summary] summary generated");
+    } catch (summaryErr) {
+      logger.error({ documentId, err: summaryErr?.message }, "[summary] summary generation failed");
+    }
 
-    // Extract results
-    const { summaryShort, summaryFull } = summaryResult.status === 'fulfilled' 
-      ? summaryResult.value 
-      : { summaryShort: '', summaryFull: '' };
+    // Step 2: Wait a bit to avoid quota issues, then generate TOC
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    const { tableOfContents } = tocResult.status === 'fulfilled'
-      ? tocResult.value
-      : { tableOfContents: [] };
+    let tableOfContents = [];
+    try {
+      const tocResult = await client.generateTableOfContents({ text: doc.extractedText || "" });
+      tableOfContents = tocResult.tableOfContents || [];
+      logger.info({ documentId, tocItems: tableOfContents.length }, "[summary] document TOC generated");
+    } catch (tocErr) {
+      logger.error({ documentId, err: tocErr?.message }, "[summary] document TOC generation failed (non-fatal)");
+    }
 
     // Update document with all generated content
     const updateData = {
@@ -92,18 +102,23 @@ module.exports = async function contentSummary(payload) {
     }
 
     // After document is completed, update subject's table of contents
-    if (doc.subjectId) {
-      try {
-        await updateSubjectTableOfContents(doc.subjectId, docsRepo, subjectsRepo, client);
-      } catch (subjectTocError) {
-        // Non-fatal: log error but don't fail the whole job
-        logger.error({ 
-          documentId, 
-          subjectId: doc.subjectId, 
-          err: subjectTocError?.message || subjectTocError,
-          stack: subjectTocError?.stack
-        }, "[summary] failed to update subject TOC (non-fatal)");
-      }
+    // NOTE: Subject TOC is optional - document is already completed at this point
+    if (doc.subjectId && process.env.ENABLE_SUBJECT_TOC !== "false") {
+      // Run in background to not block document completion
+      setImmediate(async () => {
+        try {
+          // Wait before calling LLM again to avoid quota issues
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          await updateSubjectTableOfContents(doc.subjectId, docsRepo, subjectsRepo, client);
+        } catch (subjectTocError) {
+          // Non-fatal: log error but don't fail the whole job
+          logger.warn({ 
+            documentId, 
+            subjectId: doc.subjectId, 
+            err: subjectTocError?.message || subjectTocError
+          }, "[summary] failed to update subject TOC (non-fatal, will retry later)");
+        }
+      });
     }
   } catch (e) {
     logger.error({ documentId, err: e?.message || e, stack: e?.stack }, "[summary] failed");

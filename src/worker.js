@@ -1,6 +1,10 @@
 // Load environment variables first
 require("dotenv").config();
 
+// Debug: Log GEMINI_MODEL to verify .env is loaded
+console.log("[Worker] GEMINI_MODEL from env:", process.env.GEMINI_MODEL);
+console.log("[Worker] GEMINI_API_KEY (last 8 chars):", process.env.GEMINI_API_KEY?.slice(-8));
+
 // Background worker to process BullMQ queues
 const { Worker } = require("bullmq");
 const cron = require("node-cron");

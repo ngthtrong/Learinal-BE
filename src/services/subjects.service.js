@@ -31,6 +31,7 @@ class SubjectsService {
       userId,
       subjectName: payload.subjectName,
       description: payload.description,
+      level: payload.level || '',
       tableOfContents: payload.tableOfContents || [],
       summary: payload.summary,
     };
@@ -47,6 +48,7 @@ class SubjectsService {
     const allowed = {};
     if (payload.subjectName !== undefined) allowed.subjectName = payload.subjectName;
     if (payload.description !== undefined) allowed.description = payload.description;
+    if (payload.level !== undefined) allowed.level = payload.level;
     if (payload.tableOfContents !== undefined) allowed.tableOfContents = payload.tableOfContents;
     if (payload.summary !== undefined) allowed.summary = payload.summary;
 

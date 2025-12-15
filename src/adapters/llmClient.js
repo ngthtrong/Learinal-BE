@@ -8,10 +8,11 @@ function sleep(ms) {
 class LLMClient {
   constructor(config) {
     this.config = config; // { model, apiKey, timeoutMs, retries }
+    logger.info({ model: config.model }, "[LLMClient] initialized with model");
   }
 
   get endpoint() {
-    const model = this.config.model || "gemini-2.5-flash";
+    const model = this.config.model || "gemini-2.0-flash";
     const base = "https://generativelanguage.googleapis.com/v1";
     const path = model.startsWith("models/")
       ? `${model}:generateContent`
@@ -20,7 +21,7 @@ class LLMClient {
   }
 
   async callGeminiJSON(prompt) {
-    const { apiKey, timeoutMs = 30000, retries = 2 } = this.config;
+    const { apiKey, timeoutMs = 30000, retries = 3 } = this.config;
     const url = `${this.endpoint}?key=${encodeURIComponent(apiKey)}`;
     const body = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -28,7 +29,11 @@ class LLMClient {
       generationConfig: { temperature: 0.2 },
     };
     let lastErr;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
+    
+    // For quota errors, use more retries with longer delays
+    const maxRetries = retries;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
         const res = await axios.post(url, body, { timeout: timeoutMs });
         const cand = res?.data?.candidates?.[0];
@@ -38,13 +43,31 @@ class LLMClient {
         // If provider returns structured error, prefer that message
         const msg = e?.response?.data?.error?.message || e?.message;
         lastErr = new Error(msg || "LLM request failed");
-        if (attempt < retries) await sleep(300 * (attempt + 1));
+        
+        // Check for quota/rate limit errors - need longer delay
+        const isQuotaError = msg?.includes("quota") || msg?.includes("exhausted") || msg?.includes("rate") || e?.response?.status === 429;
+        
+        if (attempt < maxRetries) {
+          // For quota errors: wait 30s, 60s, 90s (Gemini free tier resets per minute)
+          // For other errors: 1s, 2s, 4s
+          let delay;
+          if (isQuotaError) {
+            delay = 30000 * (attempt + 1); // 30s, 60s, 90s
+            logger.warn({ attempt: attempt + 1, maxRetries, delaySeconds: delay / 1000, error: msg }, "[LLM] Quota exceeded, waiting for reset...");
+          } else {
+            delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+            logger.warn({ attempt: attempt + 1, maxRetries, delay, error: msg }, "[LLM] Retrying after error");
+          }
+          await sleep(delay);
+        } else {
+          logger.error({ attempt: attempt + 1, maxRetries, isQuotaError, error: msg }, "[LLM] All retries exhausted");
+        }
       }
     }
     throw lastErr || new Error("LLM request failed");
   }
 
-  // input: { contextText, numQuestions, difficulty, topics, difficultyDistribution, topicDistribution, tableOfContents }
+  // input: { contextText, numQuestions, difficulty, topics, difficultyDistribution, topicDistribution, tableOfContents, language }
   async generateQuestions(input) {
     const { 
       contextText = "", 
@@ -53,7 +76,8 @@ class LLMClient {
       topics = [],
       difficultyDistribution = null, // { "Remember": 20, "Understand": 10, "Apply": 10, "Analyze": 10 }
       topicDistribution = null, // { "topic-id-1": 10, "topic-id-2": 20, ... }
-      tableOfContents = [] // Mảng các topic từ subject hoặc document
+      tableOfContents = [], // Mảng các topic từ subject hoặc document
+      language = "vi" // "vi" for Vietnamese, "en" for English
     } = input || {};
 
     // Always use real Gemini API - production mode only
@@ -115,9 +139,16 @@ class LLMClient {
       ? distributionInstructions 
       : `\n**QUAN TRỌNG: Tạo CHÍNH XÁC ${totalQuestionsToGenerate} câu hỏi. Không nhiều hơn, không ít hơn.**`;
 
+    // Build language instruction
+    const isVietnamese = language === "vi";
+    const languageInstruction = isVietnamese
+      ? `\n**NGÔN NGỮ: Tất cả câu hỏi, đáp án và giải thích PHẢI được viết bằng TIẾNG VIỆT. Không sử dụng tiếng Anh.**`
+      : `\n**LANGUAGE: ALL questions, options, and explanations MUST be written in ENGLISH. You can read Vietnamese context but must write questions in English. Translate concepts if needed but write everything in English.**`;
+
     const prompt = `You are a learning assistant. Using ONLY the information from the provided context, generate multiple-choice questions (MCQs). Do not invent facts beyond the context.
 
 **CRITICAL REQUIREMENT: You MUST generate EXACTLY ${totalQuestionsToGenerate} questions. Not more, not less.**
+${languageInstruction}
 
 Context (may be empty):\n${safeContext}\n
 Topics (optional): ${topics.join(", ")}
@@ -132,17 +163,19 @@ Return ONLY valid JSON (no markdown fences, no extra text) with shape:
       "options": [string,string,string,string], 
       "correctAnswerIndex": number (0..3), 
       "explanation": string, 
-      "difficultyLevel": "Remember"|"Understand"|"Apply"|"Analyze",
+      "difficultyLevel": "Remember"|"Understand"|"Apply"|"Analyze"|"Evaluate"|"Create",
       "topicId": string (optional - ID của topic trong mục lục mà câu hỏi thuộc về)
     } 
   ] 
 }
 
-Difficulty levels explained:
-- "Remember": Basic recall of facts, terms, concepts (Bloom's Taxonomy Level 1)
-- "Understand": Comprehension and explanation of ideas (Bloom's Taxonomy Level 2)
-- "Apply": Use information in new situations (Bloom's Taxonomy Level 3)
-- "Analyze": Break down and examine components, relationships (Bloom's Taxonomy Level 4)
+Difficulty levels explained (Bloom's Taxonomy - 6 levels):
+- "Remember": Basic recall of facts, terms, concepts (Level 1 - Ghi nhớ)
+- "Understand": Comprehension and explanation of ideas (Level 2 - Hiểu)
+- "Apply": Use information in new situations (Level 3 - Áp dụng)
+- "Analyze": Break down and examine components, relationships (Level 4 - Phân tích)
+- "Evaluate": Make judgments based on criteria and standards (Level 5 - Đánh giá)
+- "Create": Produce new or original work, design, compose (Level 6 - Sáng tạo)
 
 ${distributionInstructions ? 'Follow the difficulty distribution specified above exactly.' : `Ensure difficultyLevel is set to "${difficulty}" for all questions unless the context strongly suggests otherwise.`}
 ${topicDistribution ? 'Follow the topic distribution specified above exactly.' : ''}

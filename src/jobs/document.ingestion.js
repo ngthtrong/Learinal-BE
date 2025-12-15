@@ -1,4 +1,16 @@
+/**
+ * Document Ingestion Job
+ * 
+ * Processes uploaded documents:
+ * 1. Read file from disk (storagePath)
+ * 2. Extract text based on file type
+ * 3. Update document with extracted text
+ * 4. Cleanup temp file
+ * 5. Trigger content summary generation
+ */
+
 const fs = require("fs");
+const path = require("path");
 const DocumentsRepository = require("../repositories/documents.repository");
 const logger = require("../utils/logger");
 const contentSummary = require("./content.summary");
@@ -6,105 +18,167 @@ const notificationService = require("../services/notification.service");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 
+/**
+ * Main ingestion function
+ * @param {Object} payload - Job payload
+ * @param {string} payload.documentId - Document ID to process
+ * @param {string} payload.tempFilePath - Path to the uploaded file
+ */
 module.exports = async function documentIngestion(payload) {
   const { documentId, tempFilePath } = payload || {};
-  if (!documentId) return;
-  const docsRepo = new DocumentsRepository();
-  const doc = await docsRepo.findById(documentId);
-  logger.info(
-    { documentId, fileType: doc?.fileType, storagePath: doc?.storagePath },
-    "[ingestion] start"
-  );
-  if (!doc) return;
-
-  let extractedText = "";
-  let tempFileToCleanup = tempFilePath || doc.storagePath;
   
-  try {
-    const storagePath = tempFilePath || doc.storagePath;
-    if (!storagePath) throw new Error("Missing storagePath");
-
-    if (doc.fileType === ".txt") {
-      extractedText = await fs.promises.readFile(storagePath, "utf8");
-    } else if (doc.fileType === ".pdf") {
-      // Read buffer and parse with pdf-parse
-      const buffer = await fs.promises.readFile(storagePath);
-      const result = await pdfParse(buffer).catch((e) => {
-        // Some PDFs may be encrypted or malformed
-        throw new Error(`PDF parse failed: ${e?.message || e}`);
-      });
-      extractedText = result && result.text ? result.text : "";
-      if (!extractedText) throw new Error("Empty text extracted from PDF");
-    } else if (doc.fileType === ".docx") {
-      // Extract raw text from DOCX using mammoth
-      const result = await mammoth.extractRawText({ path: storagePath }).catch((e) => {
-        throw new Error(`DOCX parse failed: ${e?.message || e}`);
-      });
-      extractedText = result && result.value ? result.value : "";
-      if (!extractedText) throw new Error("Empty text extracted from DOCX");
-    } else {
-      throw new Error(`Unsupported fileType: ${doc.fileType}`);
-    }
-  } catch (e) {
-    logger.error({ documentId, err: e?.message || e }, "[ingestion] failed");
-    
-    // Update status to Error
-    await docsRepo.updateById(documentId, { 
-      $set: { 
-        status: "Error",
-        storagePath: null // Clear temp path
-      } 
-    }, { new: true });
-    
-    // Send error notification
-    const errorDoc = await docsRepo.findById(documentId);
-    logger.info({ 
-      documentId, 
-      ownerId: errorDoc?.ownerId, 
-      hasOwnerId: !!errorDoc?.ownerId 
-    }, "[ingestion] checking ownerId for error notification");
-    
-    if (errorDoc && errorDoc.ownerId) {
-      await notificationService.emitDocumentProcessed(errorDoc.ownerId.toString(), errorDoc);
-      logger.info({ documentId, userId: errorDoc.ownerId }, "[ingestion] error notification sent");
-    } else {
-      logger.warn({ documentId, doc: errorDoc }, "[ingestion] no ownerId found, cannot send error notification");
-    }
-    
-    // Cleanup temp file on error
-    if (tempFileToCleanup) {
-      try {
-        await fs.promises.unlink(tempFileToCleanup);
-        logger.info({ documentId, tempFile: tempFileToCleanup }, "[ingestion] cleaned up temp file after error");
-      } catch (unlinkError) {
-        logger.warn({ documentId, err: unlinkError.message }, "[ingestion] failed to cleanup temp file");
-      }
-    }
-    
+  if (!documentId) {
+    logger.error("[ingestion] Missing documentId in payload");
     return;
   }
 
-  // Save extracted text and clear temp path
-  await docsRepo.updateById(
-    documentId,
-    { $set: { extractedText, status: "Processing", storagePath: null } },
-    { new: true }
-  );
-  logger.info({ documentId, length: extractedText.length }, "[ingestion] extracted text");
-
-  // Cleanup temp file after successful extraction
-  if (tempFileToCleanup) {
-    try {
-      await fs.promises.unlink(tempFileToCleanup);
-      logger.info({ documentId, tempFile: tempFileToCleanup }, "[ingestion] cleaned up temp file");
-    } catch (unlinkError) {
-      logger.warn({ documentId, err: unlinkError.message }, "[ingestion] failed to cleanup temp file (non-critical)");
-    }
+  const docsRepo = new DocumentsRepository();
+  const doc = await docsRepo.findById(documentId);
+  
+  if (!doc) {
+    logger.error({ documentId }, "[ingestion] Document not found");
+    return;
   }
 
-  // Trigger summary job next (inline for now)
-  await contentSummary({ documentId });
-  logger.info({ documentId }, "[ingestion] done");
+  // Determine file path: prefer tempFilePath from job, fallback to doc.storagePath
+  const filePath = tempFilePath || doc.storagePath;
   
-  // Notification will be sent from content.summary.js after completion
+  logger.info({
+    documentId,
+    fileName: doc.originalFileName,
+    fileType: doc.fileType,
+    filePath,
+    hasJobPath: !!tempFilePath,
+    hasDocPath: !!doc.storagePath
+  }, "[ingestion] Starting document processing");
+
+  // Validate file path exists
+  if (!filePath) {
+    await handleIngestionError(docsRepo, documentId, doc, "No file path available");
+    return;
+  }
+
+  // Check file exists on disk
+  try {
+    await fs.promises.access(filePath, fs.constants.R_OK);
+  } catch (err) {
+    await handleIngestionError(docsRepo, documentId, doc, `File not found: ${filePath}`);
+    return;
+  }
+
+  let extractedText = "";
+
+  try {
+    // Extract text based on file type
+    switch (doc.fileType) {
+      case ".txt":
+        extractedText = await fs.promises.readFile(filePath, "utf8");
+        break;
+        
+      case ".pdf":
+        const pdfBuffer = await fs.promises.readFile(filePath);
+        const pdfResult = await pdfParse(pdfBuffer);
+        extractedText = pdfResult?.text || "";
+        if (!extractedText.trim()) {
+          throw new Error("PDF extraction returned empty text");
+        }
+        break;
+        
+      case ".docx":
+        const docxResult = await mammoth.extractRawText({ path: filePath });
+        extractedText = docxResult?.value || "";
+        if (!extractedText.trim()) {
+          throw new Error("DOCX extraction returned empty text");
+        }
+        break;
+        
+      default:
+        throw new Error(`Unsupported file type: ${doc.fileType}`);
+    }
+
+    logger.info({
+      documentId,
+      textLength: extractedText.length,
+      preview: extractedText.substring(0, 100)
+    }, "[ingestion] Text extracted successfully");
+
+    // Update document with extracted text
+    await docsRepo.updateById(documentId, {
+      $set: {
+        extractedText,
+        status: "Processing", // Still processing (summary generation next)
+        storagePath: null // Clear temp path
+      }
+    }, { new: true });
+
+    // Cleanup temp file
+    await cleanupFile(filePath, documentId);
+
+    // Continue to content summary generation
+    logger.info({ documentId }, "[ingestion] Starting content summary");
+    await contentSummary({ documentId });
+    
+    logger.info({ documentId }, "[ingestion] Completed successfully");
+
+  } catch (error) {
+    logger.error({
+      documentId,
+      error: error.message,
+      stack: error.stack
+    }, "[ingestion] Processing failed");
+
+    await handleIngestionError(docsRepo, documentId, doc, error.message);
+    await cleanupFile(filePath, documentId);
+  }
 };
+
+/**
+ * Handle ingestion error - update document status and notify user
+ */
+async function handleIngestionError(docsRepo, documentId, doc, errorMessage) {
+  try {
+    // Update document status to Error
+    await docsRepo.updateById(documentId, {
+      $set: {
+        status: "Error",
+        storagePath: null
+      }
+    }, { new: true });
+
+    // Send error notification to user
+    if (doc?.ownerId) {
+      const errorDoc = await docsRepo.findById(documentId);
+      await notificationService.emitDocumentProcessed(doc.ownerId.toString(), errorDoc);
+      logger.info({
+        documentId,
+        userId: doc.ownerId
+      }, "[ingestion] Error notification sent");
+    }
+  } catch (err) {
+    logger.error({
+      documentId,
+      error: err.message
+    }, "[ingestion] Failed to handle error");
+  }
+}
+
+/**
+ * Cleanup temp file safely
+ */
+async function cleanupFile(filePath, documentId) {
+  if (!filePath) return;
+  
+  try {
+    await fs.promises.unlink(filePath);
+    logger.info({ documentId, filePath }, "[ingestion] Temp file cleaned up");
+  } catch (err) {
+    // File might already be deleted, ignore error
+    if (err.code !== "ENOENT") {
+      logger.warn({
+        documentId,
+        filePath,
+        error: err.message
+      }, "[ingestion] Failed to cleanup temp file");
+    }
+  }
+}

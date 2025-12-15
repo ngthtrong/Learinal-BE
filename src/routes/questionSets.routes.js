@@ -20,7 +20,7 @@ const genSchema = Joi.object({
   body: Joi.object({
     subjectId: Joi.string().required(),
     title: Joi.string().min(1).required(),
-    numQuestions: Joi.number().integer().min(1).max(100).default(10),
+    numQuestions: Joi.number().integer().min(1).max(50).default(10),
     difficulty: Joi.string().valid("Biết", "Hiểu", "Vận dụng", "Vận dụng cao").default("Hiểu"),
   }),
 }).unknown(true);

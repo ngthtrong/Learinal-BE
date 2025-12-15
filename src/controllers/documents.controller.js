@@ -1,13 +1,27 @@
+/**
+ * Documents Controller - Handles document upload, processing, and management
+ * 
+ * ARCHITECTURE:
+ * - Uses memory storage (multer) for reliable multi-file uploads
+ * - Saves files to disk only after validation
+ * - Processes files via queue (if available) or inline
+ * - Ensures file integrity throughout the pipeline
+ */
+
 const DocumentsRepository = require("../repositories/documents.repository");
 const StorageClient = require("../adapters/storageClient");
 const { env } = require("../config");
 const jobs = require("../jobs");
 const { enqueueDocumentIngestion } = require("../adapters/queue");
 const fs = require("fs");
+const path = require("path");
 
 const docsRepo = new DocumentsRepository();
 const _storage = new StorageClient(env);
 const logger = require("../utils/logger");
+
+// Upload directory - must match routes configuration
+const uploadDir = path.resolve(__dirname, "../../uploads/pending");
 
 function mapId(doc) {
   if (!doc) return doc;
@@ -16,27 +30,32 @@ function mapId(doc) {
 }
 
 /**
+ * Save buffer to file with guaranteed write
+ */
+async function saveBufferToFile(buffer, filePath) {
+  await fs.promises.writeFile(filePath, buffer);
+  // Verify file was written correctly
+  const stats = await fs.promises.stat(filePath);
+  if (stats.size !== buffer.length) {
+    throw new Error(`File size mismatch: expected ${buffer.length}, got ${stats.size}`);
+  }
+  return filePath;
+}
+
+/**
  * Regenerate subject's table of contents after a document is deleted
- * If no documents remain, clear the subject's TOC
  */
 async function regenerateSubjectTocAfterDelete(subjectId, docsRepo, subjectsRepo, llmClient) {
   logger.info({ subjectId }, "[subject-toc] regenerating after document delete");
 
-  // Get all completed documents in this subject
   const documents = await docsRepo.findMany(
     { subjectId, status: "Completed" },
     {
-      projection: {
-        originalFileName: 1,
-        summaryShort: 1,
-        summaryFull: 1,
-        tableOfContents: 1,
-      },
+      projection: { originalFileName: 1, summaryShort: 1, summaryFull: 1, tableOfContents: 1 },
       sort: { uploadedAt: 1 },
     }
   );
 
-  // If no completed documents remain, clear the subject's TOC
   if (!documents || documents.length === 0) {
     await subjectsRepo.updateById(subjectId, { $set: { tableOfContents: [] } }, { new: true });
     logger.info({ subjectId }, "[subject-toc] cleared (no documents remaining)");
@@ -45,195 +64,202 @@ async function regenerateSubjectTocAfterDelete(subjectId, docsRepo, subjectsRepo
 
   logger.info({ subjectId, docCount: documents.length }, "[subject-toc] regenerating from remaining documents");
 
-  // Generate subject TOC from remaining documents
   const { tableOfContents } = await llmClient.generateSubjectTableOfContents({ documents });
 
   if (tableOfContents && Array.isArray(tableOfContents) && tableOfContents.length > 0) {
     await subjectsRepo.updateById(subjectId, { $set: { tableOfContents } }, { new: true });
-    logger.info(
-      {
-        subjectId,
-        tocItems: tableOfContents.length,
-        topics: tableOfContents.map((t) => t.topicName),
-      },
-      "[subject-toc] regenerated successfully"
-    );
+    logger.info({ subjectId, tocItems: tableOfContents.length }, "[subject-toc] regenerated successfully");
   } else {
-    // If LLM returns empty, clear the TOC
     await subjectsRepo.updateById(subjectId, { $set: { tableOfContents: [] } }, { new: true });
     logger.warn({ subjectId }, "[subject-toc] cleared (LLM returned empty)");
   }
 }
 
 module.exports = {
-  // POST /documents (multipart/form-data with file)
+  /**
+   * POST /documents
+   * Upload and process multiple documents
+   * 
+   * Flow:
+   * 1. Receive files in memory (multer memoryStorage)
+   * 2. Validate each file
+   * 3. Save valid files to disk
+   * 4. Create document records
+   * 5. Queue/process ingestion jobs
+   * 6. Return response with created documents
+   */
   create: async (req, res, next) => {
-    let tempFilePath = null;
+    const savedFilePaths = []; // Track saved files for cleanup on error
 
     try {
       const user = req.user;
+      const files = req.files || (req.file ? [req.file] : []);
       
-      // Debug logging
-      logger.info(
-        { 
-          userId: user?.id,
-          subjectId: req.body?.subjectId,
-          file: req.file ? { name: req.file.originalname, size: req.file.size } : null,
-          bodyKeys: Object.keys(req.body || {})
-        },
-        "[documents.create] Starting document upload"
-      );
-      
-      if (!req.file) {
-        return res.status(400).json({ code: "ValidationError", message: "Missing file" });
+      logger.info({
+        userId: user?.id,
+        subjectId: req.body?.subjectId,
+        filesCount: files.length,
+        files: files.map(f => ({ name: f.originalname, size: f.size }))
+      }, "[documents.create] Processing upload request");
+
+      if (files.length === 0) {
+        return res.status(400).json({ 
+          code: "ValidationError", 
+          message: "No files provided" 
+        });
       }
 
-      // Store temp file path for cleanup on error
-      tempFilePath = req.file.path;
+      // Ensure upload directory exists
+      await fs.promises.mkdir(uploadDir, { recursive: true });
 
       const allowedExt = [".pdf", ".docx", ".txt"];
-      const ext = req.file.originalname.slice(req.file.originalname.lastIndexOf(".")).toLowerCase();
-      if (!allowedExt.includes(ext)) {
-        // Cleanup temp file on validation error
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-        return res
-          .status(415)
-          .json({ code: "UnsupportedMediaType", message: "Only .pdf, .docx, .txt allowed" });
-      }
       const maxBytes = 20 * 1024 * 1024;
-      if (req.file.size > maxBytes) {
-        // Cleanup temp file on validation error
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-        return res.status(413).json({ code: "PayloadTooLarge", message: "Max file size is 20MB" });
-      }
-
       const now = new Date();
 
-      // originalFileName is already properly decoded by multer fileFilter
-      const toCreate = {
-        subjectId: req.body.subjectId,
-        ownerId: user.id,
-        originalFileName: req.file.originalname,
-        fileType: ext,
-        fileSize: parseFloat((req.file.size / (1024 * 1024)).toFixed(2)), // Store as decimal MB
-        storagePath: tempFilePath, // Temporary path
-        status: "Processing",
-        uploadedAt: now,
-      };
-      
-      logger.info({ toCreate }, "[documents.create] Creating document with data");
-      
-      let created;
-      try {
-        created = await docsRepo.create(toCreate);
-      } catch (createError) {
-        logger.error(
-          { 
-            error: createError.message, 
-            errors: createError.errors,
-            toCreate 
-          },
-          "[documents.create] Failed to create document"
-        );
-        throw createError;
-      }
+      const createdDocuments = [];
+      const errors = [];
 
-      // Track document upload for quota counting (prevents abuse via delete)
-      // Wrap in try-catch to not fail the upload if tracking fails
-      const { usageTrackingRepository } = req.app.locals;
-      if (usageTrackingRepository) {
+      // Process each file sequentially to ensure reliability
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileName = file.originalname;
+        
         try {
-          await usageTrackingRepository.trackAction(
-            user.id,
-            "document_upload",
-            String(created._id || created.id),
-            { subjectId: req.body.subjectId, fileName: req.file.originalname }
-          );
-          logger.info(
-            { userId: user.id, documentId: String(created._id || created.id) },
-            "[documents] Tracked document upload action"
-          );
-        } catch (trackingError) {
-          // Log error but don't fail the upload
-          logger.error(
-            { userId: user.id, documentId: String(created._id || created.id), error: trackingError.message },
-            "[documents] Failed to track document upload action - upload still successful"
-          );
-        }
-      }
-
-      // Kick off ingestion + summary chain (prefer queue only when explicitly enabled)
-      const jobPayload = {
-        documentId: String(created._id || created.id),
-        tempFilePath: tempFilePath, // Pass temp file path to job
-      };
-      const useQueue =
-        (process.env.USE_QUEUE === "true" || process.env.USE_QUEUE === "1") &&
-        !!process.env.REDIS_URL;
-      try {
-        if (useQueue) {
-          await enqueueDocumentIngestion(jobPayload);
-          logger.info({ documentId: jobPayload.documentId }, "[documents] enqueued ingestion");
-          // Watchdog: if queue doesn't pick up within 10s, run inline fallback
-          setTimeout(async () => {
-            try {
-              const latest = await docsRepo.findById(jobPayload.documentId);
-              const noText = !latest?.extractedText || String(latest.extractedText).length === 0;
-              if (latest && latest.status === "Processing" && noText) {
-                logger.warn(
-                  { documentId: jobPayload.documentId },
-                  "[documents] queue not processed in 10s, running inline fallback"
-                );
-                await jobs.documentIngestion(jobPayload);
-              }
-            } catch {}
-          }, 10_000);
-        } else {
-          // Inline processing for local/dev or when worker is not running
-          setTimeout(() => {
-            jobs.documentIngestion(jobPayload);
-          }, 5);
-          logger.info(
-            { documentId: jobPayload.documentId },
-            "[documents] scheduled inline ingestion"
-          );
-        }
-      } catch (e) {
-        // Fallback inline if queue enqueue fails
-        setTimeout(() => {
-          jobs.documentIngestion(jobPayload);
-        }, 5);
-        logger.warn(
-          { documentId: jobPayload.documentId, err: e?.message || e },
-          "[documents] enqueue failed; falling back to inline ingestion"
-        );
-      }
-
-      // Consume addon quota if needed (when user exceeded subscription limit)
-      if (req.shouldConsumeAddonDocumentQuota) {
-        const { addonPackagesService } = req.app.locals;
-        if (addonPackagesService) {
-          try {
-            await addonPackagesService.tryConsumeAddonQuota(user.id, "document_upload");
-            logger.info(
-              { userId: user.id, documentId: String(created._id || created.id) },
-              "[documents] Consumed addon document quota"
-            );
-          } catch (err) {
-            logger.warn(
-              { userId: user.id, err: err?.message },
-              "[documents] Failed to consume addon quota"
-            );
+          const ext = path.extname(fileName).toLowerCase();
+          
+          // Validate extension
+          if (!allowedExt.includes(ext)) {
+            errors.push({ fileName, error: "Unsupported file type. Only .pdf, .docx, .txt allowed" });
+            continue;
           }
+          
+          // Validate size
+          if (file.size > maxBytes) {
+            errors.push({ fileName, error: "File size exceeds 20MB limit" });
+            continue;
+          }
+
+          // Generate unique filename and save to disk
+          const timestamp = Date.now();
+          const random = Math.random().toString(36).substring(2, 8);
+          const savedFileName = `${timestamp}_${random}_${i}${ext}`;
+          const filePath = path.join(uploadDir, savedFileName);
+          
+          // Save buffer to file
+          await saveBufferToFile(file.buffer, filePath);
+          savedFilePaths.push(filePath);
+          
+          logger.info({ 
+            fileName, 
+            savedAs: savedFileName, 
+            size: file.size,
+            path: filePath 
+          }, "[documents.create] File saved to disk");
+
+          // Create document record
+          const docData = {
+            subjectId: req.body.subjectId,
+            ownerId: user.id,
+            originalFileName: fileName,
+            fileType: ext,
+            fileSize: parseFloat((file.size / (1024 * 1024)).toFixed(2)),
+            storagePath: filePath, // Full path to saved file
+            status: "Processing",
+            uploadedAt: now,
+          };
+          
+          const created = await docsRepo.create(docData);
+          createdDocuments.push(created);
+          
+          logger.info({ 
+            documentId: String(created._id), 
+            fileName 
+          }, "[documents.create] Document record created");
+
+          // Track usage
+          const { usageTrackingRepository } = req.app.locals;
+          if (usageTrackingRepository) {
+            await usageTrackingRepository.trackAction(
+              user.id, "document_upload",
+              String(created._id),
+              { subjectId: req.body.subjectId, fileName }
+            ).catch(err => logger.warn({ err: err.message }, "[documents] Failed to track upload"));
+          }
+
+          // Queue ingestion job
+          const jobPayload = {
+            documentId: String(created._id),
+            tempFilePath: filePath,
+          };
+
+          const useQueue = 
+            (process.env.USE_QUEUE === "true" || process.env.USE_QUEUE === "1") &&
+            !!process.env.REDIS_URL;
+
+          if (useQueue) {
+            await enqueueDocumentIngestion(jobPayload);
+            logger.info({ documentId: jobPayload.documentId }, "[documents] Enqueued ingestion job");
+          } else {
+            // Process inline with small delay to not block response
+            setImmediate(() => {
+              jobs.documentIngestion(jobPayload).catch(err => {
+                logger.error({ documentId: jobPayload.documentId, err: err.message }, "[documents] Inline ingestion failed");
+              });
+            });
+            logger.info({ documentId: jobPayload.documentId }, "[documents] Scheduled inline ingestion");
+          }
+
+          // Consume addon quota if needed
+          if (req.shouldConsumeAddonDocumentQuota) {
+            const { addonPackagesService } = req.app.locals;
+            if (addonPackagesService) {
+              await addonPackagesService.tryConsumeAddonQuota(user.id, "document_upload")
+                .catch(err => logger.warn({ err: err.message }, "[documents] Failed to consume addon quota"));
+            }
+          }
+
+        } catch (fileError) {
+          errors.push({ fileName, error: fileError.message });
+          logger.error({ fileName, error: fileError.message }, "[documents.create] Failed to process file");
         }
       }
 
-      return res.status(201).json(mapId(created));
-    } catch (e) {
-      // Cleanup temp file on any error
-      if (tempFilePath) {
-        await fs.promises.unlink(tempFilePath).catch(() => {});
+      // Return response
+      if (createdDocuments.length === 0) {
+        // Cleanup any saved files since all failed
+        for (const p of savedFilePaths) {
+          await fs.promises.unlink(p).catch(() => {});
+        }
+        return res.status(400).json({
+          code: "ValidationError",
+          message: "No files were uploaded successfully",
+          errors
+        });
       }
+
+      const response = {
+        documents: createdDocuments.map(mapId),
+        successCount: createdDocuments.length,
+        failureCount: errors.length
+      };
+
+      if (errors.length > 0) {
+        response.errors = errors;
+      }
+
+      logger.info({
+        successCount: createdDocuments.length,
+        failureCount: errors.length
+      }, "[documents.create] Upload completed");
+
+      return res.status(201).json(response);
+
+    } catch (e) {
+      // Cleanup saved files on error
+      for (const p of savedFilePaths) {
+        await fs.promises.unlink(p).catch(() => {});
+      }
+      logger.error({ error: e.message }, "[documents.create] Upload failed");
       next(e);
     }
   },
@@ -260,10 +286,10 @@ module.exports = {
       if (!doc || String(doc.ownerId) !== String(user.id)) {
         return res.status(404).json({ code: "NotFound", message: "Document not found" });
       }
-      const { summaryShort, summaryFull } = doc;
-      return res
-        .status(200)
-        .json({ summaryShort: summaryShort || null, summaryFull: summaryFull || null });
+      return res.status(200).json({
+        summaryShort: doc.summaryShort || null,
+        summaryFull: doc.summaryFull || null
+      });
     } catch (e) {
       next(e);
     }
@@ -280,32 +306,25 @@ module.exports = {
 
       const subjectId = doc.subjectId;
 
-      // Xóa file trong storage
+      // Delete file from storage
       if (doc.storagePath) {
-        await _storage.delete(doc.storagePath).catch((err) => {
-          logger.warn(
-            { err, storagePath: doc.storagePath },
-            "[documents] Failed to delete file from storage"
-          );
+        await _storage.delete(doc.storagePath).catch(err => {
+          logger.warn({ err: err.message, storagePath: doc.storagePath }, "[documents] Failed to delete file");
         });
       }
 
-      // Xóa document từ database
+      // Delete document record
       await docsRepo.deleteById(req.params.id);
 
-      // Regenerate subject TOC after document deletion (async, don't block response)
+      // Regenerate subject TOC in background
       if (subjectId) {
         const { subjectsRepository, llmClient } = req.app.locals;
         if (subjectsRepository && llmClient) {
-          // Run in background to not block response
           setImmediate(async () => {
             try {
               await regenerateSubjectTocAfterDelete(subjectId, docsRepo, subjectsRepository, llmClient);
             } catch (err) {
-              logger.error(
-                { subjectId, error: err.message },
-                "[documents] Failed to regenerate subject TOC after delete"
-              );
+              logger.error({ subjectId, error: err.message }, "[documents] Failed to regenerate TOC");
             }
           });
         }
@@ -322,21 +341,12 @@ module.exports = {
     try {
       const user = req.user;
       const { subjectId } = req.params;
-
-      // Validate và parse pagination params
+      
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "20", 10)));
 
-      // Filter: chỉ lấy documents của user hiện tại và subject được chỉ định
-      const filter = {
-        subjectId,
-        ownerId: user.id,
-      };
-
-      // Optional status filter
-      if (req.query.status) {
-        filter.status = req.query.status;
-      }
+      const filter = { subjectId, ownerId: user.id };
+      if (req.query.status) filter.status = req.query.status;
 
       const result = await docsRepo.paginate(filter, {
         page,

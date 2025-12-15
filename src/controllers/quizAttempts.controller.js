@@ -6,7 +6,26 @@ const { addJob } = require("../adapters/queue");
 const attemptsRepo = new QuizAttemptsRepository();
 const qsetRepo = new QuestionSetsRepository();
 
-const weights = { Biết: 1, Hiểu: 1.25, "Vận dụng": 1.5, "Vận dụng cao": 2 };
+// Difficulty weights - Bloom's Taxonomy (6 levels)
+const weights = { 
+  "Ghi nhớ": 1, 
+  "Hiểu": 1.2, 
+  "Áp dụng": 1.4, 
+  "Phân tích": 1.6, 
+  "Đánh giá": 1.8, 
+  "Sáng tạo": 2,
+  // English fallbacks
+  "Remember": 1,
+  "Understand": 1.2,
+  "Apply": 1.4,
+  "Analyze": 1.6,
+  "Evaluate": 1.8,
+  "Create": 2,
+  // Old mappings (backward compatibility)
+  "Biết": 1,
+  "Vận dụng": 1.4,
+  "Vận dụng cao": 1.6
+};
 
 module.exports = {
   // POST /quiz-attempts { setId }

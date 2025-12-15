@@ -10,6 +10,7 @@ const SubjectSchema = new Schema({
   userId: { type: Types.ObjectId, ref: 'User', required: true },
   subjectName: { type: String, required: true, trim: true },
   description: { type: String },
+  level: { type: String, enum: ['secondary', 'highschool', 'university', ''], default: '' },
   tableOfContents: { type: [TopicSchema], default: [] },
   summary: { type: String },
 }, { timestamps: true, versionKey: false, collection: 'subjects' });

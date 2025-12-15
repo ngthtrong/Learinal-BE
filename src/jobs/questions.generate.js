@@ -7,6 +7,48 @@ const LLMClient = require("../adapters/llmClient");
 const notificationService = require("../services/notification.service");
 const logger = require("../utils/logger");
 
+// Map Vietnamese difficulty levels to English (Bloom's Taxonomy)
+function mapDifficultyToEnglish(difficultyDistribution) {
+  if (!difficultyDistribution || typeof difficultyDistribution !== 'object') {
+    return difficultyDistribution;
+  }
+  
+  const mapping = {
+    "Ghi nhớ": "Remember",
+    "Hiểu": "Understand",
+    "Áp dụng": "Apply",
+    "Phân tích": "Analyze",
+    "Đánh giá": "Evaluate",
+    "Sáng tạo": "Create",
+    // Old mappings (backward compatibility)
+    "Biết": "Remember",
+    "Vận dụng": "Apply",
+    "Vận dụng cao": "Analyze",
+  };
+  
+  const mappedDistribution = {};
+  for (const [level, count] of Object.entries(difficultyDistribution)) {
+    const englishLevel = mapping[level] || level; // Use mapped value or keep as-is if already in English
+    mappedDistribution[englishLevel] = count;
+  }
+  
+  return mappedDistribution;
+}
+
+// Map English difficulty levels back to Vietnamese (Bloom's Taxonomy)
+function mapDifficultyToVietnamese(difficultyLevel) {
+  const mapping = {
+    "Remember": "Ghi nhớ",
+    "Understand": "Hiểu",
+    "Apply": "Áp dụng",
+    "Analyze": "Phân tích",
+    "Evaluate": "Đánh giá",
+    "Create": "Sáng tạo",
+  };
+  
+  return mapping[difficultyLevel] || difficultyLevel;
+}
+
 module.exports = async function questionsGenerate(payload) {
   logger.info({ payload }, "[questions.generate] job received");
 
@@ -18,6 +60,7 @@ module.exports = async function questionsGenerate(payload) {
     difficulty = "Understand",
     difficultyDistribution = null,
     topicDistribution = null,
+    language = "vi", // Default to Vietnamese
   } = payload || {};
 
   if (!questionSetId || !userId) {
@@ -117,6 +160,7 @@ module.exports = async function questionsGenerate(payload) {
         questionSetId,
         userId,
         totalQuestions,
+        language,
         contextLength: contextText?.length,
         hasTOC: tableOfContents?.length > 0,
       },
@@ -124,7 +168,7 @@ module.exports = async function questionsGenerate(payload) {
     );
 
     // For large question sets, split into batches to avoid timeout
-    const MAX_QUESTIONS_PER_BATCH = 25;
+    const MAX_QUESTIONS_PER_BATCH = 15; // Reduced from 25 for better reliability
     const needsBatching = totalQuestions > MAX_QUESTIONS_PER_BATCH;
 
     if (needsBatching) {
@@ -139,12 +183,13 @@ module.exports = async function questionsGenerate(payload) {
     }
 
     // Generate questions using LLM with dynamic timeout based on question count
-    // Estimate: ~2 seconds per question + 10 second base
+    // Estimate: ~4 seconds per question + 30 second base (increased for reliability)
     const questionsPerCall = needsBatching ? MAX_QUESTIONS_PER_BATCH : totalQuestions;
-    const estimatedTimeoutMs = Math.max(30000, questionsPerCall * 2000 + 10000);
+    const estimatedTimeoutMs = Math.max(60000, questionsPerCall * 4000 + 30000);
     const llmConfigWithTimeout = {
       ...llm,
       timeoutMs: estimatedTimeoutMs,
+      retries: 5, // Increase retries for large sets
     };
 
     logger.info(
@@ -161,13 +206,66 @@ module.exports = async function questionsGenerate(payload) {
     let allQuestions = [];
 
     try {
+      // Map Vietnamese difficulty levels to English for LLM
+      const mappedDifficultyDistribution = mapDifficultyToEnglish(difficultyDistribution);
+      
       if (needsBatching) {
-        // Generate in batches
+        // Generate in batches with proportional difficulty distribution
         const numBatches = Math.ceil(totalQuestions / MAX_QUESTIONS_PER_BATCH);
+        
+        // Calculate difficulty distribution per batch
+        const batchDifficultyDistributions = [];
+        if (mappedDifficultyDistribution && typeof mappedDifficultyDistribution === 'object') {
+          // Distribute difficulties proportionally across batches
+          const difficultyLevels = Object.keys(mappedDifficultyDistribution);
+          const remainingCounts = { ...mappedDifficultyDistribution };
+          
+          for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
+            const remainingQuestions = totalQuestions - (batchIndex * MAX_QUESTIONS_PER_BATCH);
+            const questionsThisBatch = Math.min(MAX_QUESTIONS_PER_BATCH, remainingQuestions);
+            const batchDistribution = {};
+            let assignedThisBatch = 0;
+            
+            for (const level of difficultyLevels) {
+              if (remainingCounts[level] > 0) {
+                // Proportionally assign questions for this difficulty level
+                const proportion = remainingCounts[level] / Object.values(remainingCounts).reduce((a, b) => a + b, 0);
+                const countForLevel = Math.round(questionsThisBatch * proportion);
+                const actualCount = Math.min(countForLevel, remainingCounts[level], questionsThisBatch - assignedThisBatch);
+                
+                if (actualCount > 0) {
+                  batchDistribution[level] = actualCount;
+                  remainingCounts[level] -= actualCount;
+                  assignedThisBatch += actualCount;
+                }
+              }
+            }
+            
+            // Ensure we have exactly questionsThisBatch questions
+            const totalAssigned = Object.values(batchDistribution).reduce((a, b) => a + b, 0);
+            if (totalAssigned < questionsThisBatch) {
+              // Add remaining to first available level
+              for (const level of difficultyLevels) {
+                if (remainingCounts[level] > 0) {
+                  const diff = questionsThisBatch - totalAssigned;
+                  const toAdd = Math.min(diff, remainingCounts[level]);
+                  batchDistribution[level] = (batchDistribution[level] || 0) + toAdd;
+                  remainingCounts[level] -= toAdd;
+                  break;
+                }
+              }
+            }
+            
+            batchDifficultyDistributions.push(batchDistribution);
+          }
+        }
 
         for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
           const remainingQuestions = totalQuestions - allQuestions.length;
           const questionsThisBatch = Math.min(MAX_QUESTIONS_PER_BATCH, remainingQuestions);
+          
+          // Get difficulty distribution for this batch
+          const batchDifficultyDist = batchDifficultyDistributions[batchIndex] || null;
 
           logger.info(
             {
@@ -175,22 +273,31 @@ module.exports = async function questionsGenerate(payload) {
               batchIndex: batchIndex + 1,
               totalBatches: numBatches,
               questionsThisBatch,
+              batchDifficultyDist,
             },
             "[questions.generate] generating batch"
           );
 
-          // For batched generation, use simpler distribution
+          // For batched generation, pass proportional difficulty distribution
           const result = await client.generateQuestions({
             contextText,
             numQuestions: questionsThisBatch,
             difficulty,
-            difficultyDistribution: null, // Simplified for batching
+            difficultyDistribution: batchDifficultyDist,
             topicDistribution: null,
             tableOfContents,
+            language,
           });
 
           if (result.questions && Array.isArray(result.questions)) {
-            allQuestions.push(...result.questions);
+            // Re-index questionIds to ensure uniqueness across batches
+            // Use global offset based on already generated questions
+            const globalOffset = allQuestions.length;
+            const reindexedQuestions = result.questions.map((q, idx) => ({
+              ...q,
+              questionId: `Q${String(globalOffset + idx + 1).padStart(3, '0')}`,
+            }));
+            allQuestions.push(...reindexedQuestions);
           }
 
           // Small delay between batches to avoid rate limiting
@@ -213,11 +320,17 @@ module.exports = async function questionsGenerate(payload) {
           contextText,
           numQuestions: totalQuestions,
           difficulty,
-          difficultyDistribution,
+          difficultyDistribution: mappedDifficultyDistribution,
           topicDistribution,
           tableOfContents,
+          language,
         });
-        allQuestions = result.questions || [];
+        // Re-index questionIds to ensure uniqueness and consistent format
+        const questions = result.questions || [];
+        allQuestions = questions.map((q, idx) => ({
+          ...q,
+          questionId: `Q${String(idx + 1).padStart(3, '0')}`,
+        }));
       }
     } catch (llmError) {
       logger.error(
@@ -251,6 +364,13 @@ module.exports = async function questionsGenerate(payload) {
         `LLM returned no valid questions. Expected ${totalQuestions}, got ${questions?.length || 0}`
       );
     }
+
+    // Map English difficulty levels back to Vietnamese for storage
+    questions.forEach((q) => {
+      if (q.difficultyLevel) {
+        q.difficultyLevel = mapDifficultyToVietnamese(q.difficultyLevel);
+      }
+    });
 
     const percentageGenerated = (questions.length / totalQuestions) * 100;
 

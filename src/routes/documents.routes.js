@@ -1,7 +1,6 @@
 const express = require("express");
 const multer = require("multer");
 const Joi = require("joi");
-const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const logger = require("../utils/logger");
@@ -13,42 +12,39 @@ const { cacheResponse } = require("../middleware/cacheResponse");
 
 const router = express.Router();
 
-// Create temp directory for uploads
-const tempDir = path.join(os.tmpdir(), "learinal-uploads");
-try {
-  fs.mkdirSync(tempDir, { recursive: true });
-} catch (err) {
-  logger.error({ err }, "Failed to create temp upload directory");
-}
+// ============================================================================
+// UPLOAD DIRECTORY SETUP
+// IMPORTANT: Use project directory, NOT OS temp folder (gets auto-cleaned!)
+// ============================================================================
+const uploadDir = path.resolve(__dirname, "../../uploads/pending");
+fs.mkdirSync(uploadDir, { recursive: true });
+logger.info({ uploadDir }, "[documents.routes] Upload directory ready");
 
-// Use disk storage for temp files during extraction
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, tempDir);
-  },
-  filename: function (req, file, cb) {
-    // Unique temp filename with timestamp and random string
-    const uniqueSuffix = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, uniqueSuffix + ext);
-  },
-});
-
+// ============================================================================
+// MULTER CONFIGURATION - Memory storage for reliability
+// Files are kept in memory buffer until processed, avoiding filesystem race conditions
+// ============================================================================
 const upload = multer({
-  storage: storage,
-  limits: { fileSize: 20 * 1024 * 1024 },
-  preservePath: false,
-  // Fix encoding issues with filenames
+  storage: multer.memoryStorage(), // Store in memory - more reliable for multiple files
+  limits: { 
+    fileSize: 20 * 1024 * 1024, // 20MB per file
+    files: 10 // Max 10 files per request
+  },
   fileFilter: (req, file, cb) => {
-    // Decode the filename properly to handle UTF-8 characters
+    // Fix UTF-8 filename encoding
     try {
-      // Convert buffer to string with proper encoding
-      const originalname = Buffer.from(file.originalname, "latin1").toString("utf8");
-      file.originalname = originalname;
+      file.originalname = Buffer.from(file.originalname, "latin1").toString("utf8");
     } catch (e) {
-      // If conversion fails, keep original
-      logger.warn({ error: e.message }, "Failed to convert filename encoding");
+      // Keep original if conversion fails
     }
+    
+    // Validate extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExt = [".pdf", ".docx", ".txt"];
+    if (!allowedExt.includes(ext)) {
+      return cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', `Unsupported: ${ext}`), false);
+    }
+    
     cb(null, true);
   },
 });
@@ -59,18 +55,28 @@ const createSchema = Joi.object({
   body: Joi.object({ subjectId: Joi.string().required() }),
 }).unknown(true);
 
+// ============================================================================
+// ROUTES
+// ============================================================================
+
+// POST /documents - Upload and process multiple files
 router.post(
   "/",
   uploadLimiter,
   authenticateJWT,
-  upload.single("file"),
+  upload.array("files", 10),
   inputValidation(createSchema),
   checkDocumentUploadLimit,
   controller.create
 );
-// Cache document metadata (5 minutes TTL)
+
+// GET /documents/:id
 router.get("/:id", authenticateJWT, cacheResponse({ ttl: 300 }), controller.get);
+
+// GET /documents/:id/summary
 router.get("/:id/summary", authenticateJWT, cacheResponse({ ttl: 300 }), controller.summary);
+
+// DELETE /documents/:id
 router.delete("/:id", authenticateJWT, controller.remove);
 
 module.exports = router;
