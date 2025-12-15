@@ -56,16 +56,91 @@ const templates = [
   {
     templateId: "subscriptionExpiring",
     name: "Subscription Expiring Soon",
-    subject: "Your Subscription Expires Soon",
+    subject: "Gói dịch vụ sắp hết hạn - Learinal",
     category: "Subscription",
     variables: ["userName", "planName", "endDate", "renewUrl"],
     bodyHtml: `
-      <h1>Subscription Expiring</h1>
-      <p>Hi {{userName}},</p>
-      <p>Your {{planName}} subscription expires on {{endDate}}.</p>
-      <p><a href="{{renewUrl}}">Renew Now</a> to continue enjoying premium features.</p>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fb;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="width: 100%; max-width: 500px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header with Logo -->
+          <tr>
+            <td style="padding: 30px 40px 20px;">
+              <table role="presentation" style="width: 100%;">
+                <tr>
+                  <td>
+                    <img src="https://learinal.app/logo.png" alt="Learinal" style="height: 32px; width: auto;" />
+                    <span style="margin-left: 8px; font-size: 18px; font-weight: 600; color: #4F46E5; vertical-align: middle;">Learinal</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 0 40px 30px;">
+              <h1 style="margin: 0 0 8px; font-size: 24px; font-weight: 600; color: #1a1a2e; text-align: center;">⏰ Gói dịch vụ sắp hết hạn</h1>
+              <p style="margin: 0 0 20px; font-size: 14px; color: #6b7280; text-align: center;">Xin chào {{userName}},</p>
+              
+              <p style="margin: 0 0 24px; font-size: 14px; color: #374151; line-height: 1.6; text-align: center;">
+                Gói dịch vụ của bạn sắp hết hạn. Hãy gia hạn ngay để tiếp tục sử dụng các tính năng premium!
+              </p>
+              
+              <!-- Subscription Details Box -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #fef3c7; border-radius: 8px; margin-bottom: 24px; border: 1px solid #f59e0b;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table role="presentation" style="width: 100%;">
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #fcd34d;">
+                          <span style="font-size: 13px; color: #92400e;">Gói dịch vụ</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #1a1a2e;">{{planName}}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0;">
+                          <span style="font-size: 13px; color: #92400e;">Ngày hết hạn</span><br>
+                          <span style="font-size: 15px; font-weight: 600; color: #dc2626;">{{endDate}}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              
+              
+              <p style="margin: 0; font-size: 13px; color: #6b7280; line-height: 1.6; text-align: center;">
+                Nếu bạn không gia hạn, gói dịch vụ sẽ tự động chuyển về đã hủy sau khi hết hạn.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+                © Learinal. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
     `,
-    bodyText: "Your subscription expires on {{endDate}}. Renew at: {{renewUrl}}",
+    bodyText: "Gói dịch vụ sắp hết hạn! Xin chào {{userName}}, gói {{planName}} của bạn sẽ hết hạn vào {{endDate}}. Gia hạn ngay tại: {{renewUrl}}",
     isActive: true,
   },
   {

@@ -199,6 +199,7 @@ module.exports = {
         // Check if already processed
         const processedTx = await ProcessedTransaction.findOne({ transactionId: txId });
         if (processedTx) {
+          logger.info({ txId, userId, planId, previousResult: processedTx.result }, "[Webhook] Transaction already processed, skipping");
           results.push({ userId, txId, planId, action: "already_processed" });
           continue;
         }
@@ -211,13 +212,42 @@ module.exports = {
           currentStatus: current?.subscriptionStatus 
         }, "[Webhook] User lookup result");
 
-        if (current && current.subscriptionStatus === "None") {
+        // Allow subscription activation for:
+        // 1. User with no subscription (status === "None")
+        // 2. User switching/changing plans (status === "Active" but different plan or renewal)
+        if (current && (current.subscriptionStatus === "None" || current.subscriptionStatus === "Active")) {
+          const currentPlanId = current.subscriptionPlanId?.toString();
+          const newPlanId = (plan.id || plan._id).toString();
+          const isPlanChange = current.subscriptionStatus === "Active" && currentPlanId !== newPlanId;
+          const isRenewal = current.subscriptionStatus === "Active" && currentPlanId === newPlanId;
+          
           // Calculate renewal date based on billing cycle
           const renewalDate = new Date();
           if (plan.billingCycle === "Monthly") {
             renewalDate.setMonth(renewalDate.getMonth() + 1);
           } else if (plan.billingCycle === "Yearly") {
             renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+          }
+
+          // If this is a plan change, cancel the old UserSubscription record
+          if (isPlanChange) {
+            try {
+              // Find and cancel old active UserSubscription
+              const oldActiveSubscription = await userSubscriptionsRepo.findOne({
+                userId: userId,
+                status: "Active"
+              });
+              if (oldActiveSubscription) {
+                await userSubscriptionsRepo.updateById(oldActiveSubscription._id, {
+                  status: "Canceled",
+                  canceledAt: new Date(),
+                  autoRenew: false
+                });
+                logger.info({ userId, oldPlanId: currentPlanId, newPlanId }, "[Webhook] Old subscription canceled for plan change");
+              }
+            } catch (cancelError) {
+              logger.warn({ userId, error: cancelError.message }, "[Webhook] Failed to cancel old subscription, continuing with new subscription");
+            }
           }
 
           // Update user with full subscription details
@@ -227,7 +257,63 @@ module.exports = {
             subscriptionRenewalDate: renewalDate,
           });
 
+          // Create or reactivate UserSubscription record
+          try {
+            const startDate = new Date();
+            const targetPlanId = plan.id || plan._id;
+            
+            // First, cancel ALL other active subscriptions for this user (different plans)
+            await userSubscriptionsRepo.updateMany(
+              { 
+                userId: userId, 
+                status: "Active",
+                planId: { $ne: targetPlanId }
+              },
+              { 
+                status: "Canceled", 
+                canceledAt: new Date(),
+                autoRenew: false 
+              }
+            );
+            
+            // Check if user already has ANY subscription with this plan (Active, Canceled, or Expired)
+            const existingSubscription = await userSubscriptionsRepo.findOne({
+              userId: userId,
+              planId: targetPlanId
+            });
+
+            if (existingSubscription) {
+              // Update existing subscription with new dates and fresh entitlements
+              await userSubscriptionsRepo.updateById(existingSubscription._id, {
+                status: "Active",
+                startDate: startDate,
+                endDate: renewalDate,
+                renewalDate: renewalDate,
+                autoRenew: true,
+                canceledAt: null,
+                entitlementsSnapshot: plan.entitlements || null, // Fresh entitlements from current plan
+              });
+              logger.info({ userId, planId: targetPlanId.toString(), subscriptionId: existingSubscription._id.toString(), previousStatus: existingSubscription.status }, "[Webhook] UserSubscription updated/reactivated with fresh entitlements");
+            } else {
+              // Create new subscription only if no existing record for this plan
+              await userSubscriptionsRepo.create({
+                userId: userId,
+                planId: targetPlanId,
+                status: "Active",
+                startDate: startDate,
+                endDate: renewalDate,
+                renewalDate: renewalDate,
+                autoRenew: true,
+                entitlementsSnapshot: plan.entitlements || null,
+              });
+              logger.info({ userId, planId: targetPlanId.toString() }, "[Webhook] UserSubscription record created (first time for this plan)");
+            }
+          } catch (subError) {
+            logger.warn({ userId, error: subError.message }, "[Webhook] Failed to create/update UserSubscription record, User model updated successfully");
+          }
+
           // Mark as processed
+          const actionType = isPlanChange ? "plan_changed" : (isRenewal ? "renewed" : "activated");
           await ProcessedTransaction.create({
             transactionId: txId,
             type: "subscription",
@@ -235,7 +321,7 @@ module.exports = {
             referenceId: (plan.id || plan._id).toString(),
             amount: amountIn,
             content,
-            result: "activated"
+            result: actionType
           });
 
           // Send payment success email
@@ -274,11 +360,12 @@ module.exports = {
           }
 
           updated++;
-          results.push({ userId, txId, planId, planName: plan.planName, action: "activated" });
-          logger.info({ userId, planId, planName: plan.planName }, "[Webhook] Subscription activated");
+          results.push({ userId, txId, planId, planName: plan.planName, action: actionType });
+          logger.info({ userId, planId, planName: plan.planName, action: actionType }, "[Webhook] Subscription processed");
         } else if (current) {
-          logger.info({ userId, currentStatus: current.subscriptionStatus }, "[Webhook] User already has subscription or not None");
-          results.push({ userId, txId, planId, planName: plan.planName, action: "already_active_or_not_none" });
+          // User has some other status (e.g., PendingPayment, Expired)
+          logger.info({ userId, currentStatus: current.subscriptionStatus }, "[Webhook] User has non-processable subscription status");
+          results.push({ userId, txId, planId, planName: plan.planName, action: "status_not_processable", currentStatus: current.subscriptionStatus });
         } else {
           logger.info({ userId }, "[Webhook] User not found");
           results.push({ userId, txId, planId, action: "user_not_found" });

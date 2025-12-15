@@ -78,6 +78,9 @@ async function startWorkers() {
         logger.info("[Cron] Running subscription renewal reminder check");
         await subscriptionRenewalReminderHandler({
           userSubscriptionsRepository: repositories.userSubscriptionsRepository,
+          usersRepository: repositories.usersRepository,
+          subscriptionPlansRepository: repositories.subscriptionPlansRepository,
+          emailClient,
         });
       } catch (error) {
         logger.error({ error }, "[Cron] Subscription renewal reminder check failed");

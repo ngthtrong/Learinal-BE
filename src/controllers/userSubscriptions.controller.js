@@ -100,10 +100,11 @@ module.exports = {
 
   cancel: async (req, res, next) => {
     try {
-      const { userSubscriptionsService } = req.app.locals;
+      const { userSubscriptionsService, usersRepository } = req.app.locals;
       const subscription = await userSubscriptionsService.cancelSubscription(
         req.user.id,
-        req.params.id
+        req.params.id,
+        usersRepository // Pass usersRepository to update User model
       );
 
       res.json({ status: "success", message: "Subscription canceled", data: { subscription } });

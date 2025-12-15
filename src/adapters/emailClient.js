@@ -196,6 +196,26 @@ class EmailClient {
     // No provider configured; act as no-op
     return false;
   }
+
+  /**
+   * Send email using a database template
+   * @param {Object} options
+   * @param {string} options.to - Recipient email
+   * @param {string} options.templateId - Database template ID (e.g., 'subscriptionExpiring')
+   * @param {Object} options.variables - Variables to replace in template
+   * @returns {Promise<boolean>}
+   */
+  async sendTemplate({ to, templateId, variables }) {
+    const dbTemplate = await this.getTemplateFromDb(templateId);
+    if (!dbTemplate) {
+      const logger = require('../utils/logger');
+      logger.error({ templateId }, 'Email template not found in database');
+      throw new Error(`Email template "${templateId}" not found`);
+    }
+
+    const subject = this.replaceVariables(dbTemplate.subject, variables);
+    return this.send(to, subject, null, variables, { dbTemplateId: templateId });
+  }
 }
 
 module.exports = EmailClient;

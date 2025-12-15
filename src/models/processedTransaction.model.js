@@ -42,7 +42,7 @@ const ProcessedTransactionSchema = new Schema(
     // Kết quả xử lý
     result: {
       type: String,
-      enum: ["activated", "skipped", "error"],
+      enum: ["activated", "plan_changed", "renewed", "reactivated", "skipped", "error"],
       default: "activated"
     },
     // Ghi chú

@@ -96,7 +96,7 @@ class UserSubscriptionsService {
     return this.mapSubscriptionToDTO(populated);
   }
 
-  async cancelSubscription(userId, subscriptionId) {
+  async cancelSubscription(userId, subscriptionId, usersRepository = null) {
     console.log("Canceling subscription:", subscriptionId, "for user:", userId);
 
     const subscription = await this.repository.findOne({
@@ -123,6 +123,16 @@ class UserSubscriptionsService {
       canceledAt: new Date(),
       autoRenew: false,
     });
+
+    // Also update User.subscriptionStatus to "None" so user can subscribe to a new plan
+    if (usersRepository) {
+      await usersRepository.updateUserById(userId, {
+        subscriptionStatus: "None",
+        subscriptionPlanId: null,
+        subscriptionRenewalDate: null,
+      });
+      console.log("Updated user subscriptionStatus to None");
+    }
 
     console.log("Updated subscription:", updatedSubscription);
     return updatedSubscription;

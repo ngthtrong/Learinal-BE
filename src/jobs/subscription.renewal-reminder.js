@@ -1,56 +1,72 @@
 /**
  * Job: Send renewal reminders
- * Scheduled: Daily
- * Sends reminder 3 days before subscription expires
+ * Scheduled: Daily at 9 AM
+ * Sends reminder 5 days before subscription expires
  */
 
 const logger = console;
 
-async function processRenewalReminders({ userSubscriptionsRepository, emailClient }) {
+async function processRenewalReminders({ userSubscriptionsRepository, usersRepository, subscriptionPlansRepository, emailClient }) {
   logger.info('[Job] Processing renewal reminders...');
 
-  const threeDaysFromNow = new Date();
-  threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+  const fiveDaysFromNow = new Date();
+  fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
+  fiveDaysFromNow.setHours(0, 0, 0, 0);
   
-  const fourDaysFromNow = new Date();
-  fourDaysFromNow.setDate(fourDaysFromNow.getDate() + 4);
+  const sixDaysFromNow = new Date();
+  sixDaysFromNow.setDate(sixDaysFromNow.getDate() + 6);
+  sixDaysFromNow.setHours(0, 0, 0, 0);
 
-  // Find subscriptions expiring in 3 days
+  // Find subscriptions expiring in 5 days
   const expiringSubscriptions = await userSubscriptionsRepository.find({
     status: 'Active',
     endDate: {
-      $gte: threeDaysFromNow,
-      $lt: fourDaysFromNow,
+      $gte: fiveDaysFromNow,
+      $lt: sixDaysFromNow,
     },
-  }).populate('user subscriptionPlan');
+  });
 
-  logger.info(`[Job] Found ${expiringSubscriptions.length} subscriptions expiring soon`);
+  logger.info(`[Job] Found ${expiringSubscriptions.length} subscriptions expiring in 5 days`);
 
   for (const subscription of expiringSubscriptions) {
-    const user = subscription.user;
-    const plan = subscription.subscriptionPlan;
-    
-    if (!user || !user.email) {
-      logger.warn(`[Job] No email for user ${subscription.user}`);
-      continue;
-    }
-
     try {
-      await emailClient.send({
+      // Get user and plan details
+      const user = await usersRepository.findById(subscription.userId);
+      const plan = await subscriptionPlansRepository.findById(subscription.planId);
+      
+      if (!user || !user.email) {
+        logger.warn(`[Job] No email for user ${subscription.userId}`);
+        continue;
+      }
+
+      if (!plan) {
+        logger.warn(`[Job] No plan found for subscription ${subscription._id}`);
+        continue;
+      }
+
+      // Format end date
+      const endDate = new Date(subscription.endDate);
+      const formattedEndDate = endDate.toLocaleDateString('vi-VN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      // Send email using subscriptionExpiring template
+      await emailClient.sendTemplate({
         to: user.email,
-        subject: 'Learinal - Subscription Renewal Reminder',
-        html: `
-          <h2>Your subscription is expiring soon</h2>
-          <p>Hi ${user.displayName || 'there'},</p>
-          <p>Your <strong>${plan.planName}</strong> subscription will expire on ${subscription.endDate.toLocaleDateString()}.</p>
-          <p>To continue enjoying premium features, please renew your subscription.</p>
-          <p>Best regards,<br>Learinal Team</p>
-        `,
+        templateId: 'subscriptionExpiring',
+        variables: {
+          userName: user.fullName || user.email,
+          planName: plan.planName,
+          endDate: formattedEndDate,
+          renewUrl: `${process.env.FRONTEND_URL || 'https://learinal.app'}/subscription`,
+        },
       });
       
-      logger.info(`[Job] Sent renewal reminder to ${user.email} for subscription ${subscription._id}`);
+      logger.info(`[Job] Sent expiring reminder to ${user.email} for subscription ${subscription._id}, expires: ${formattedEndDate}`);
     } catch (error) {
-      logger.error(`[Job] Failed to send renewal reminder to ${user.email}:`, error);
+      logger.error(`[Job] Failed to send renewal reminder for subscription ${subscription._id}:`, error.message);
     }
   }
 

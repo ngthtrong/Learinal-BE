@@ -33,4 +33,12 @@ router.get("/subscription-plans", subscriptionPlansController.adminList);
 router.get("/subscription-plans/audit-logs", subscriptionPlansController.getAllAuditLogs);
 router.get("/subscription-plans/audit-logs/:logId", subscriptionPlansController.getAuditLogDetail);
 
+// Processed Transactions (for debugging webhook issues)
+router.get("/processed-transactions", controller.getProcessedTransactions);
+router.delete("/processed-transactions/:transactionId", controller.deleteProcessedTransaction);
+router.delete("/processed-transactions/user/:userId", controller.deleteUserProcessedTransactions);
+
+// Cleanup duplicate subscriptions
+router.post("/cleanup-duplicate-subscriptions", controller.cleanupDuplicateSubscriptions);
+
 module.exports = router;

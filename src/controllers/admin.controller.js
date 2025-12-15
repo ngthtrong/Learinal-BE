@@ -1,4 +1,5 @@
 const AdminService = require("../services/admin.service");
+const { ProcessedTransaction, UserSubscription } = require("../models");
 
 const adminService = new AdminService({});
 
@@ -155,6 +156,152 @@ module.exports = {
     try {
       const performance = await adminService.getExpertPerformance();
       res.json(performance);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * GET /admin/processed-transactions
+   * List processed transactions (for debugging)
+   */
+  getProcessedTransactions: async (req, res, next) => {
+    try {
+      const { page = 1, pageSize = 20, userId, type } = req.query;
+      const filter = {};
+      if (userId) filter.userId = userId;
+      if (type) filter.type = type;
+
+      const skip = (parseInt(page) - 1) * parseInt(pageSize);
+      const limit = parseInt(pageSize);
+
+      const [transactions, total] = await Promise.all([
+        ProcessedTransaction.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        ProcessedTransaction.countDocuments(filter)
+      ]);
+
+      res.json({
+        status: "success",
+        data: { transactions },
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * DELETE /admin/processed-transactions/:transactionId
+   * Delete a processed transaction (to allow reprocessing for testing)
+   */
+  deleteProcessedTransaction: async (req, res, next) => {
+    try {
+      const { transactionId } = req.params;
+      const result = await ProcessedTransaction.findOneAndDelete({ transactionId });
+      
+      if (!result) {
+        return res.status(404).json({
+          status: "error",
+          message: "Processed transaction not found"
+        });
+      }
+
+      res.json({
+        status: "success",
+        message: "Processed transaction deleted, webhook can now reprocess this transaction",
+        data: { deleted: result }
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * DELETE /admin/processed-transactions/user/:userId
+   * Delete all processed transactions for a user (for testing)
+   */
+  deleteUserProcessedTransactions: async (req, res, next) => {
+    try {
+      const { userId } = req.params;
+      const result = await ProcessedTransaction.deleteMany({ userId });
+      
+      res.json({
+        status: "success",
+        message: `Deleted ${result.deletedCount} processed transactions for user`,
+        data: { deletedCount: result.deletedCount }
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  /**
+   * POST /admin/cleanup-duplicate-subscriptions
+   * Clean up duplicate UserSubscription records - keep only the most recent one per user+plan
+   */
+  cleanupDuplicateSubscriptions: async (req, res, next) => {
+    try {
+      // Find all users with duplicate subscriptions for the same plan
+      const duplicates = await UserSubscription.aggregate([
+        {
+          $group: {
+            _id: { userId: "$userId", planId: "$planId" },
+            count: { $sum: 1 },
+            ids: { $push: "$_id" },
+            docs: { $push: { _id: "$_id", status: "$status", startDate: "$startDate", createdAt: "$createdAt" } }
+          }
+        },
+        {
+          $match: { count: { $gt: 1 } }
+        }
+      ]);
+
+      let totalDeleted = 0;
+      const cleanupDetails = [];
+
+      for (const dup of duplicates) {
+        // Sort by startDate desc, then createdAt desc - keep the most recent one
+        const sorted = dup.docs.sort((a, b) => {
+          const dateA = new Date(a.startDate || a.createdAt);
+          const dateB = new Date(b.startDate || b.createdAt);
+          return dateB - dateA;
+        });
+
+        // Keep the first one (most recent), delete the rest
+        const toKeep = sorted[0];
+        const toDelete = sorted.slice(1).map(d => d._id);
+
+        if (toDelete.length > 0) {
+          await UserSubscription.deleteMany({ _id: { $in: toDelete } });
+          totalDeleted += toDelete.length;
+          cleanupDetails.push({
+            userId: dup._id.userId,
+            planId: dup._id.planId,
+            kept: toKeep._id,
+            deleted: toDelete,
+            deletedCount: toDelete.length
+          });
+        }
+      }
+
+      res.json({
+        status: "success",
+        message: `Cleaned up ${totalDeleted} duplicate subscription records`,
+        data: {
+          totalDuplicateGroups: duplicates.length,
+          totalDeleted,
+          details: cleanupDetails
+        }
+      });
     } catch (e) {
       next(e);
     }
