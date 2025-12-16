@@ -291,15 +291,17 @@ module.exports = {
         return res.status(404).json({ code: "NotFound", message: "Not found" });
       }
 
-      // If question set is Public (created by expert), check Premium subscription
-      if (isExpertPublic && !isOwner) {
-        // Use itemUserId (already extracted above) or extract again
+      // Check if this is an Expert's shared set (either isShared or status=Public)
+      if ((isPubliclyShared || isExpertPublic) && !isOwner) {
         const ownerUserId = item.userId?._id || item.userId;
         const ownerUser = await usersRepo.findById(ownerUserId);
+        console.log('👤 Owner info:', { userId: ownerUserId, role: ownerUser?.role });
+        
         if (ownerUser && ownerUser.role === "Expert") {
-          // Check if current user has Premium subscription
+          console.log('🎓 Expert set detected - checking subscription requirements');
+          // Check if current user has Premium or Pro subscription
           const { userSubscriptionsService } = req.app.locals;
-          console.log('🔍 Checking premium for user:', user.id, 'email:', user.email);
+          console.log('🔍 Checking subscription for user:', user.id, 'email:', user.email);
           const activeSubscription = await userSubscriptionsService.getActiveSubscription(user.id);
           console.log('✅ Active subscription:', activeSubscription);
           console.log('📋 Subscription details:', activeSubscription ? {
@@ -308,17 +310,43 @@ module.exports = {
             planId: activeSubscription.planId
           } : 'NULL');
           
+          // Block users without subscription or with Basic plan
           if (!activeSubscription) {
             console.log('❌ No active subscription - blocking access');
-            // Allow viewing but restrict quiz access
             return res.status(200).json({
               ...mapId(item),
               _premiumRequired: true,
-              _message: "Bạn cần nâng cấp lên gói Premium để làm bài tập này"
+              _message: "Bạn cần nâng cấp lên gói Premium hoặc Pro để làm bài tập của Expert"
+            });
+          }
+
+          // Get plan name from either 'name' or 'planName' field
+          const planName = activeSubscription.plan?.planName || activeSubscription.plan?.name || '';
+          const planNameLower = planName.toLowerCase().trim();
+          console.log('📦 Plan name:', planName, '| Lowercase:', planNameLower);
+          console.log('📦 Full plan object:', JSON.stringify(activeSubscription.plan, null, 2));
+          
+          // Block users with Basic plan or Free plan
+          const isBasicOrFreePlan = planNameLower === 'basic' || 
+                                    planNameLower === 'free' ||
+                                    planNameLower.includes('basic') ||
+                                    planNameLower.includes('free') ||
+                                    planName === 'Basic' ||
+                                    planName === 'Free' ||
+                                    planName === 'BASIC' ||
+                                    planName === 'FREE';
+          
+          if (isBasicOrFreePlan) {
+            console.log('❌ Basic/Free plan detected - blocking access');
+            return res.status(200).json({
+              ...mapId(item),
+              _premiumRequired: true,
+              _message: "Gói Basic không cho phép làm bài của Expert. Vui lòng nâng cấp lên gói Premium hoặc Pro"
             });
           }
           
-          console.log('✅ Has premium subscription - allowing access');
+          // Allow users with Premium or Unlimited plan
+          console.log('✅ Has Premium/Unlimited subscription - allowing access');
         }
       }
 
@@ -451,12 +479,26 @@ module.exports = {
         });
       }
 
-      // 3. Create validation request
+      // 3. Create validation request with question set snapshot
       const validationRequest = await validationRequestsRepo.create({
         setId,
         learnerId: userId,
         status: "PendingAssignment",
         requestTime: new Date(),
+        // Save snapshot of question set data
+        questionSetSnapshot: {
+          title: questionSet.title,
+          description: questionSet.description,
+          questionCount: (questionSet.questions || []).length,
+          questions: (questionSet.questions || []).map(q => ({
+            questionId: q.questionId || String(q._id),
+            questionText: q.questionText,
+            options: q.options || [],
+            correctAnswerIndex: q.correctAnswerIndex,
+            difficultyLevel: q.difficultyLevel,
+            explanation: q.explanation,
+          })),
+        },
       });
 
       // Track usage for subscription limit enforcement
