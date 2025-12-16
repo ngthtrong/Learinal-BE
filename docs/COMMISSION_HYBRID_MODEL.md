@@ -10,12 +10,16 @@ Hệ thống hoa hồng Hybrid Model kết hợp **Fixed Rate** (tỷ lệ cố 
 
 ## Cấu trúc hoa hồng
 
-### 1. Fixed Rate (Tính ngay khi có quiz attempt)
+### 1. Fixed Rate (Tính ngay khi có quiz attempt hoặc validation)
 
-| Loại nội dung     | Fixed Rate      | Mô tả                                   |
-| ------------------- | --------------- | ----------------------------------------- |
-| **Published** | 300 VND/attempt | Expert tự tạo và publish bộ đề      |
-| **Validated** | 150 VND/attempt | Expert kiểm duyệt bộ đề của Learner |
+| Loại nội dung     | Fixed Rate      | Khi nào tính                                      | Giới hạn                                        |
+| ------------------- | --------------- | --------------------------------------------------- | ------------------------------------------------- |
+| **Published** | 300 VND/attempt | Mỗi lượt làm bài của premium user             | Tối đa 20 lượt/learner trên mỗi bộ đề    |
+| **Validated** | 150 VND         | 1 lần duy nhất khi hoàn thành kiểm duyệt | Chỉ tính khi decision = Approved              |
+
+**Lưu ý quan trọng:**
+- **Published**: Expert nhận 300đ mỗi khi có premium user làm bài, nhưng mỗi learner chỉ tạo tối đa 20 commissions cho expert (tránh spam)
+- **Validated**: Expert nhận 150đ một lần ngay khi approve validation, không tính thêm khi learner làm bài
 
 ### 2. Revenue Bonus (Tính cuối tháng)
 
@@ -35,17 +39,19 @@ Bonus = (Số attempt vượt ngưỡng) × (Doanh thu trung bình/attempt) × (
 
 #### Expert A: Content phổ biến (Published)
 
-- Tháng 11: 250 quiz attempts
-- Fixed: 250 × 300 = **75,000 VND**
+- Tháng 11: 250 quiz attempts từ 15 learners khác nhau
+- Learner X: 50 attempts → Tính 20 attempts (limit) = 20 × 300 = **6,000 VND**
+- 14 learners khác: 200 attempts (mỗi người <20) = 200 × 300 = **60,000 VND**
+- **Fixed total: 66,000 VND**
 - Bonus: (250-100) × 500 × 0.05 = **3,750 VND**
-- **Tổng: 78,750 VND**
+- **Tổng: 69,750 VND**
 
 #### Expert B: Validator (Validated)
 
-- Tháng 11: 180 quiz attempts
-- Fixed: 180 × 150 = **27,000 VND**
-- Bonus: (180-100) × 500 × 0.02 = **800 VND**
-- **Tổng: 27,800 VND**
+- Tháng 11: Kiểm duyệt 5 bộ đề (tất cả approved)
+- Fixed: 5 × 150 = **750 VND** (trả 1 lần khi complete)
+- Bonus: 0 (không có bonus cho validated type)
+- **Tổng: 750 VND**
 
 ## Điều kiện áp dụng
 
@@ -118,7 +124,63 @@ CommissionRecord {
   
   status: "Pending" | "Paid" | "Cancelled",
   entitledUntil: Date,       // Thời hạn hưởng quyền (Validated)
+  
+  metadata: {
+    questionSetTitle: String,
+    learnerScore: Number,
+    attemptDuration: Number,
+    learnerId: String,       // Track để giới hạn 20 lượt/learner
+  }
+  
+  // Snapshot: Lưu thông tin bộ đề phòng khi learner xóa
+  questionSetSnapshot: {
+    title: String,
+    description: String,
+    status: String,
+  }
 }
+
+ValidationRequest {
+  setId: ObjectId,
+  learnerId: ObjectId,
+  expertId: ObjectId,
+  status: String,
+  
+  // Snapshot: Lưu toàn bộ nội dung bộ đề
+  questionSetSnapshot: {
+    title: String,
+    description: String,
+    questionCount: Number,
+    questions: [{
+      questionId: String,
+      questionText: String,
+      options: [String],
+      correctAnswerIndex: Number,
+      difficultyLevel: String,
+      explanation: String,
+    }]
+  }
+}
+```
+
+### Tính năng Snapshot
+
+Khi learner xóa bộ đề, expert vẫn có thể xem lịch sử validation và commission:
+
+- **ValidationRequest**: Lưu toàn bộ câu hỏi trong bộ đề
+- **CommissionRecord**: Lưu title, description, status của bộ đề
+- **Hiển thị**: Tự động fallback sang snapshot nếu bộ đề đã bị xóa
+
+### Backfill Migration
+
+Chạy scripts sau để cập nhật snapshot cho records hiện có:
+
+```bash
+# Backfill validation requests
+node scripts/backfill-validation-request-snapshots.js
+
+# Backfill commission records
+node scripts/backfill-commission-snapshots.js
 ```
 
 ## Cron Jobs
@@ -170,38 +232,64 @@ node scripts/migrate-commission-records.js
 ## Flow Chart
 
 ```
-Quiz Submit
+=== PUBLISHED TYPE (Expert tạo bộ đề) ===
+
+Quiz Submit (Premium User)
     │
     ▼
 Worker: commissionCalculate
     │
-    ├─► Check: Question Set Published/Validated?
+    ├─► Check: Question Set Published by Expert?
     │       │
     │       └─► No: Skip
     │
-    ├─► Check: Expert exists?
+    ├─► Check: Learner đã vượt 20 lượt cho bộ đề này?
     │       │
-    │       └─► No: Skip
+    │       ├─► Yes: Skip (đã đủ limit)
+    │       └─► No: Continue
     │
-    ├─► Check: Entitlement valid? (for Validated)
-    │       │
-    │       └─► No: Skip
-    │
-    ├─► Calculate Fixed Amount
-    │       Published: 300 VND
-    │       Validated: 150 VND
+    ├─► Calculate Fixed Amount: 300 VND
     │
     └─► Create CommissionRecord (status: Pending)
+
+
+=== VALIDATED TYPE (Expert kiểm duyệt) ===
+
+Expert Complete Validation (Approved)
+    │
+    ▼
+Job: reviewCompleted
+    │
+    ├─► Check: Commission đã tạo cho validation này?
+    │       │
+    │       ├─► Yes: Skip
+    │       └─► No: Continue
+    │
+    ├─► Calculate Fixed Amount: 150 VND (one-time)
+    │
+    └─► Create CommissionRecord (status: Pending, attemptId: null)
+
+
+=== MONTHLY RECONCILIATION ===
 
 Monthly Reconciliation (Day 1, 3AM)
     │
     ▼
-Get unreconciled records for previous month
+Get unreconciled PUBLISHED records for previous month
     │
     ▼
 Group by setId
     │
     ▼
+For each set with >100 premium attempts:
+    │
+    ├─► Calculate Bonus
+    │       Bonus = (attempts - 100) × 500 × rate
+    │
+    └─► Update commissionAmount & mark as reconciled
+
+Note: VALIDATED records không có bonus
+```
 For each set:
     │
     ├─► Count premium attempts

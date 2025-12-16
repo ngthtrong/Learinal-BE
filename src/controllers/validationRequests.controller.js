@@ -88,13 +88,35 @@ module.exports = {
         const setMap = new Map(sets.map(s => [String(s._id), { title: s.title, questionCount: (s.questions||[]).length }]));
         const learnerMap = new Map(learners.map(u => [String(u._id), { name: u.fullName || u.displayName || u.email }]));
         const expertMap = new Map(experts.map(u => [String(u._id), { name: u.fullName || u.displayName || u.email }]));
-        enriched = enriched.map(r => ({
-          ...r,
-          questionSetTitle: setMap.get(String(r.setId))?.title,
-          questionCount: setMap.get(String(r.setId))?.questionCount,
-          learnerName: learnerMap.get(String(r.learnerId))?.name,
-          expertName: r.expertId ? expertMap.get(String(r.expertId))?.name : undefined,
-        }));
+        enriched = enriched.map(r => {
+          // Use snapshot data if question set was deleted
+          const setData = setMap.get(String(r.setId));
+          let questionSetTitle;
+          let questionCount;
+          
+          if (setData) {
+            // Question set still exists
+            questionSetTitle = setData.title;
+            questionCount = setData.questionCount;
+          } else if (r.questionSetSnapshot) {
+            // Question set deleted, use snapshot with note
+            const snapshotTitle = r.questionSetSnapshot.title || 'Bộ đề';
+            questionSetTitle = `${snapshotTitle} (Đã xóa)`;
+            questionCount = r.questionSetSnapshot.questionCount ?? 0;
+          } else {
+            // No snapshot available
+            questionSetTitle = 'Bộ đề (Đã xóa)';
+            questionCount = 0;
+          }
+          
+          return {
+            ...r,
+            questionSetTitle,
+            questionCount,
+            learnerName: learnerMap.get(String(r.learnerId))?.name,
+            expertName: r.expertId ? expertMap.get(String(r.expertId))?.name : undefined,
+          };
+        });
       }
 
       res.status(200).json({
@@ -141,16 +163,33 @@ module.exports = {
       const learner = await usersRepo.findById(String(request.learnerId));
       const expert = request.expertId ? await usersRepo.findById(String(request.expertId)) : null;
 
+      // If question set is deleted, use snapshot data
+      let questionSetData = null;
+      if (questionSet) {
+        questionSetData = {
+          id: String(questionSet._id),
+          title: questionSet.title,
+          description: questionSet.description,
+          status: questionSet.status,
+          questions: questionSet.questions || [],
+          questionCount: (questionSet.questions || []).length,
+        };
+      } else if (request.questionSetSnapshot) {
+        // Question set was deleted, use snapshot with note
+        const snapshotTitle = request.questionSetSnapshot.title || 'Bộ đề';
+        questionSetData = {
+          id: String(request.setId),
+          title: `${snapshotTitle} (Đã xóa)`,
+          description: request.questionSetSnapshot.description || '',
+          status: 'Deleted',
+          questions: request.questionSetSnapshot.questions || [],
+          questionCount: request.questionSetSnapshot.questionCount || 0,
+        };
+      }
+
       res.status(200).json({
         request: mapId(request),
-        questionSet: questionSet ? {
-          id: String(questionSet._id),
-            title: questionSet.title,
-            description: questionSet.description,
-            status: questionSet.status,
-            questions: questionSet.questions || [],
-            questionCount: (questionSet.questions || []).length,
-        } : null,
+        questionSet: questionSetData,
         learner: learner ? {
           id: String(learner._id),
           name: learner.fullName || learner.displayName || learner.email,
